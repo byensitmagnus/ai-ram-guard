@@ -83,6 +83,7 @@ sealed class TrayContext : ApplicationContext
                 var after = r.Killed + r.Trimmed > 0 && !dryRun ? Guard.Scan(_state.Profiles) : inspected.Report;
                 return (r, after, Advisor.Advise(after, KnownConfigs.Read()), game);
             });
+            if (_state.Paused) Guard.RestorePriorities(); // you paused while this round ran: it lowered after the pause restored
 
             _state.Report = report;
             _state.Advice = advice;

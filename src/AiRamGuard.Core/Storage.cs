@@ -91,7 +91,7 @@ public static class Storage
         var exists = Path.IsPathFullyQualified(path) && Directory.Exists(path);
         return new SpotUsage(s, path, real, exists, exists ? FolderBytes(path) : 0,
             string.Equals(Path.GetPathRoot(real), system, StringComparison.OrdinalIgnoreCase),
-            exists && s.Movable && s.CopyContents ? LinkCount(path) : 0);
+            exists && s.Movable && s.CopyContents ? LinkCount(path) ?? 0 : 0);
     }
 
     /// <summary>Follows a junction or symbolic link at <paramref name="path"/> itself (not deeper ones).</summary>
@@ -120,7 +120,8 @@ public static class Storage
     /// Junctions and symbolic links inside a folder, not followed. Hugging Face makes one per model file when Developer Mode is on.
     /// robocopy can't recreate links without admin rights (error 1314, even in Developer Mode), so a move would leave them behind, split from their files.
     /// </summary>
-    public static int LinkCount(string path) => !Directory.Exists(path) ? 0 : Safe(() =>
+    /// <returns>Null when the walk failed: then nobody can say there are none.</returns>
+    public static int? LinkCount(string path) => !Directory.Exists(path) ? 0 : Safe<int?>(() =>
         new FileSystemEnumerable<bool>(path, (ref FileSystemEntry e) => true,
             new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 })
         {
@@ -154,9 +155,9 @@ public static class Mover
     public static List<MoveRecord> History(string? file = null) => Load(file ?? Paths.MovesFile) ?? [];
 
     /// <summary>The spots whose last move still holds: the variable points where it was moved. Only those can be undone.</summary>
-    public static HashSet<string> Undoable(string? file = null) =>
+    public static HashSet<string> Undoable(string? file = null, IEnumerable<StorageSpot>? spots = null) =>
         History(file).GroupBy(m => m.Id).Select(g => g.Last())
-            .Where(m => Storage.Known.FirstOrDefault(k => k.Id == m.Id) is { } s && Same(Storage.CurrentPath(s), m.To))
+            .Where(m => (spots ?? Storage.Known).FirstOrDefault(k => k.Id == m.Id) is { } s && Same(Storage.CurrentPath(s), m.To))
             .Select(m => m.Id).ToHashSet();
 
     /// <summary>Null when the file is there but can't be read: a move must not then overwrite the undo records in it.</summary>
@@ -187,11 +188,12 @@ public static class Mover
         // Moving again to the same folder picks up what was in use last time.
         var retry = last is not null && Same(last.To, to) && Same(Storage.CurrentPath(s), to);
         var from = retry ? last!.From : Storage.CurrentPath(s);
-        // A mistyped variable (HF_HOME=D:\ or a relative path) would make "the cache" a whole drive or your profile.
-        if (!Path.IsPathFullyQualified(from) || Same(Path.GetPathRoot(from)!, from) || Same(from, Storage.Home))
+        // A mistyped variable (HF_HOME=D:\, %APPDATA% or a relative path) would make "the cache" a whole drive, your profile or app data, undo file included.
+        string[] mustStay = [Storage.Home, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), file];
+        if (!Path.IsPathFullyQualified(from) || Same(Path.GetPathRoot(from)!, from) || mustStay.Any(p => IsInside(p, from)))
             return new(false, $"{s.EnvVars[0]} points at {from}, not at a cache folder. Fix it first. Nothing was changed.");
-        if (s.CopyContents && Storage.LinkCount(from) is var links and > 0)
-            return new(false, $"{from} has {links} links in it (Hugging Face makes them in Developer Mode). Windows only lets an admin copy links, so it would move half. Move it yourself from an admin prompt with robocopy /E /MOVE /SL, then set {s.EnvVars[0]}. Nothing was changed.");
+        if (s.CopyContents && Storage.LinkCount(from) is var links and not 0)
+            return new(false, links is null ? $"Couldn't read all of {from}, so it can't be checked for links. Nothing was changed." : $"{from} has {links} links in it (Hugging Face makes them in Developer Mode). Windows only lets an admin copy links, so it would move half. Move it yourself from an admin prompt with robocopy /E /MOVE /SL, then set {s.EnvVars[0]}. Nothing was changed.");
         var root = Path.GetPathRoot(to)!;
         if (Same(root, to)) return new(false, "Pick a folder, not a whole drive.");
         if (new DriveInfo(root).DriveType != DriveType.Fixed) return new(false, $"{root} is not a fixed drive: tools would break while it is unplugged.");

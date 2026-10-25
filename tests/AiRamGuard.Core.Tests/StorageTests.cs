@@ -82,7 +82,7 @@ public sealed class StorageTests : IDisposable
     [Fact]
     public void Refuses_when_the_variable_points_at_a_drive_or_a_relative_path()
     {
-        foreach (var bad in new[] { Path.GetPathRoot(_root)!, "cache" })
+        foreach (var bad in new[] { Path.GetPathRoot(_root)!, "cache", Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), _root })
         {
             using (var k = Registry.CurrentUser.CreateSubKey("Environment")) k.SetValue(_var, bad);
             Assert.False(Mover.Move(Spot(), Dst, Records).Ok);
@@ -95,9 +95,10 @@ public sealed class StorageTests : IDisposable
     public void Undo_keeps_a_folder_you_chose_since()
     {
         Assert.True(Mover.Move(Spot(), Dst, Records).Ok);
+        Assert.Contains("test", Mover.Undoable(Records, [Spot()]));
         var mine = Path.Combine(_root, "mine");
         using (var k = Registry.CurrentUser.CreateSubKey("Environment")) k.SetValue(_var, mine);
-        Assert.Empty(Mover.Undoable(Records)); // the page stops offering the undo
+        Assert.Empty(Mover.Undoable(Records, [Spot()])); // the page stops offering the undo
         Assert.False(Mover.Undo(Spot(), Records).Ok);
         Assert.Equal(mine, Raw(_var, out _));
         Assert.Equal(1500, Storage.FolderBytes(Dst));

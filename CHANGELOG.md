@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 (unreleased)
+## 1.2.0 (2026-10-25)
 
 **New**
 - *Disk* page and `airg disk`: where AI tools and their caches write (npm, uv, pip, NuGet, Playwright, Hugging Face, Ollama, temp, Claude Code, Codex), the size and the real drive, also when the folder is a junction or npm's cache is set in `~/.npmrc`

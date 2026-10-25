@@ -81,7 +81,7 @@ Only values still at Windows' default are changed: a priority you or the app its
 - The undo record (old raw value and type, or "not set") is saved before anything changes.
 - A file is removed from the old folder only after it was copied; files in use stay and are picked up by moving again.
 - A cache with junctions or symbolic links in it is not moved. Windows lets only an admin recreate links, so robocopy would leave them behind, split from their files. Hugging Face makes such links in Developer Mode; move that one yourself from an admin prompt (`robocopy /E /MOVE /SL`).
-- The variable must point at a real folder: a drive root, your user folder or a relative path is refused.
+- The variable must point at a cache folder: a drive root, a relative path, or a folder that holds your user folder or app data is refused.
 - **Undo** refuses when you pointed the variable somewhere else since, so it never overwrites your own choice. A damaged undo file blocks new moves instead of being overwritten.
 - The target must be an empty or new folder on a fixed drive, never a drive root, so **Undo** can move everything in it back.
 - Temp files are not copied, only the variables switch.

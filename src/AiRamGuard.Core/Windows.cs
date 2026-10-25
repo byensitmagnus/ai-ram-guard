@@ -93,7 +93,9 @@ public static class Guard
     {
         var report = Scan(profiles);
         var fg = Desktop.ForegroundPid();
-        var game = Desktop.ForegroundIsFullscreen() && report.Agents.All(a => a.Processes.All(p => p.Pid != fg));
+        var byPid = report.Snapshot.Processes.ToDictionary(p => p.Pid);
+        // A fullscreen terminal running Claude Code is no game: count each AI process's parent chain, as Prioritize does.
+        var game = Desktop.ForegroundIsFullscreen() && !report.Agents.Any(a => a.Processes.Any(p => p.Pid == fg || Analyzer.HasAncestor(p, fg, byPid)));
         return (report, Policy.Decide(report, s, fg, game, force));
     }
 
