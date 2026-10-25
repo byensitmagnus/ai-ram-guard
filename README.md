@@ -19,7 +19,7 @@
 
 > Built after a 32 GB gaming PC ran out of RAM in the middle of a game. The cause wasn't the game. It was **48 processes of one MCP server** and **25 of another**, started by AI sessions open in the background.
 
-<p align="center"><img src="assets/demo.gif" alt="AI RAM Guard tour: overview with RAM ring and RAM per AI app, recommendations, activity timeline and settings" width="880"></p>
+<p align="center"><img src="assets/demo.gif" alt="AI RAM Guard tour: overview with RAM ring and RAM per AI app, recommendations, disk, activity timeline and settings" width="880"></p>
 
 ## Contents
 - [Why your AI tools eat RAM](#why-your-ai-tools-eat-ram)
