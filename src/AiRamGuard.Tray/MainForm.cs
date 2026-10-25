@@ -323,7 +323,7 @@ sealed class ActivityPage : Page
         catch (IOException) { return; } // the guard is writing right now; next refresh picks it up
         var text = lines.Length == 0
             ? "Nothing yet. When AI RAM Guard closes a leftover or frees memory, it shows up here."
-            : string.Join(Environment.NewLine, lines.Reverse().Take(400));
+            : string.Join(Environment.NewLine, Enumerable.Reverse(lines).Take(400));
         if (_log.Text != text) _log.Text = text;
     }
 }

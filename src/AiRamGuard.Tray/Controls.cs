@@ -162,7 +162,7 @@ sealed class HistoryChart : Painted
     void Legend(Graphics g, float right, float y, params (string Label, Color Color)[] items)
     {
         var x = right;
-        foreach (var (label, color) in items.Reverse())
+        foreach (var (label, color) in Enumerable.Reverse(items))
         {
             var w = g.MeasureString(label, T.Small).Width;
             x -= w;
