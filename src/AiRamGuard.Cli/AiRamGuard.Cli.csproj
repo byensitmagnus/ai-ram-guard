@@ -1,11 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <AssemblyName>airg</AssemblyName>
     <RootNamespace>AiRamGuard.Cli</RootNamespace>
   </PropertyGroup>
+  <!-- Release publishes the CLI trimmed (38 -> 12 MB). Partial mode trims only the framework; app code stays whole.
+       WMI needs built-in COM and all of System.Management; JSON keeps reflection for the app's own types. -->
+  <PropertyGroup Condition="'$(PublishTrimmed)' == 'true'">
+    <TrimMode>partial</TrimMode>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
   <ItemGroup>
+    <TrimmerRootAssembly Include="System.Management" />
     <ProjectReference Include="..\AiRamGuard.Core\AiRamGuard.Core.csproj" />
   </ItemGroup>
 </Project>

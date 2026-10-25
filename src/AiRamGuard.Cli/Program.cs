@@ -18,6 +18,10 @@ Usage:
 https://github.com/byensitmagnus/ai-ram-guard
 """;
 
+// One number format everywhere ("4,600 MB", "8.4 GB"), and UTF-8 so "×" survives a pipe or a file.
+System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+
 var cmd = args.FirstOrDefault() ?? "scan";
 bool Has(string flag) => args.Contains(flag);
 string? Opt(string name) { var i = Array.IndexOf(args, name); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }

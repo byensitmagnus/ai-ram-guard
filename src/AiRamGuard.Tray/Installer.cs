@@ -32,6 +32,7 @@ static class Installer
                 if (File.Exists(Path.Combine(src, name))) File.Copy(Path.Combine(src, name), Path.Combine(Dir, name), overwrite: true);
 
         CreateShortcut(Shortcut, InstalledExe);
+        if (Env.AddToPath(Dir)) Env.Broadcast(); // so `airg` works in any new terminal
         using (var run = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"))
             run.SetValue("AI RAM Guard", $"\"{InstalledExe}\" --background");
         using (var k = Registry.CurrentUser.CreateSubKey(UninstallKey))
@@ -68,6 +69,7 @@ static class Installer
         Autostart.Enabled = false;
         File.Delete(Shortcut);
         Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, throwOnMissingSubKey: false);
+        if (Env.RemoveFromPath(Dir)) Env.Broadcast();
         // The running exe can't delete itself: a hidden cmd waits a moment, then removes the folder.
         Process.Start(new ProcessStartInfo("cmd.exe", $"/c timeout /t 3 /nobreak >nul & rmdir /s /q \"{Dir}\"")
         {

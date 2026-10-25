@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>AiRamGuard</AssemblyName>
     <RootNamespace>AiRamGuard.Tray</RootNamespace>
@@ -11,6 +11,8 @@
     <!-- A RAM tool should be light: workstation GC without concurrent background GC thread. -->
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <TieredPGO>true</TieredPGO>
+    <!-- No designer: every control is built in code, so designer serialization (WFO1000) never applies. -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AiRamGuard.Core\AiRamGuard.Core.csproj" />

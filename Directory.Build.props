@@ -11,5 +11,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- A trimmed publish (the CLI) also builds Core with the trim analyzer on. Partial trim keeps app code whole, so its JSON reflection is safe. -->
+    <SuppressTrimAnalysisWarnings Condition="'$(PublishTrimmed)' == 'true'">true</SuppressTrimAnalysisWarnings>
   </PropertyGroup>
 </Project>

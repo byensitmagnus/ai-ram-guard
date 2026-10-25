@@ -7,6 +7,12 @@
 - Move a cache to another drive in one click, or with `airg move <id> D:`, and undo it (`airg undo <id>`). Uses `robocopy`: files in use stay behind, links are never followed, the old variable is restored exactly
 - Lower priority in the background (on by default): AI apps you are not using get low memory priority, and while a game is in front also below-normal CPU priority and EcoQoS. Restored as soon as you switch to the app, the game ends, you pause, or the app exits
 - Keyboard: Ctrl+1–5 switch pages
+- Install puts `airg` on your user `PATH` (removed again on uninstall)
+
+**Smaller and supported**
+- Runs on .NET 10 (LTS, supported until November 2028); .NET 8 support ends 10 November 2026
+- Download about a third smaller: the app is 52 MB instead of 72 MB, and `airg.exe` 12 MB instead of 35 MB
+- `airg` prints numbers the same way everywhere ("4,600 MB", "8.4 GB") and writes UTF-8, so output piped to a file or another tool keeps its characters
 
 ## 1.1.0 (2026-10-25)
 

@@ -7,7 +7,7 @@
   <a href="https://github.com/byensitmagnus/ai-ram-guard/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/byensitmagnus/ai-ram-guard/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-ba01c4"></a>
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6">
-  <img alt=".NET 8" src="https://img.shields.io/badge/.NET-8-512BD4">
+  <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10-512BD4">
   <img alt="No admin rights" src="https://img.shields.io/badge/admin%20rights-not%20needed-2fb380">
 </p>
 

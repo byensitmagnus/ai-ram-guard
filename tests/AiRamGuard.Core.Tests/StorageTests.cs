@@ -106,6 +106,21 @@ public sealed class StorageTests : IDisposable
         Assert.Equal(RegistryValueKind.ExpandString, kind);
     }
 
+    [Fact]
+    public void PATH_gets_the_folder_once_keeps_its_type_and_loses_only_that_entry()
+    {
+        using (var k = Registry.CurrentUser.CreateSubKey("Environment"))
+            k.SetValue(_var, @"%USERPROFILE%\bin;C:\Tools\", RegistryValueKind.ExpandString);
+        Assert.True(Env.AddToPath(@"C:\Apps\AiRamGuard", _var));
+        Assert.False(Env.AddToPath(@"c:\apps\airamguard\", _var)); // already there
+        Assert.Equal(@"%USERPROFILE%\bin;C:\Tools\;C:\Apps\AiRamGuard", Raw(_var, out var kind));
+        Assert.Equal(RegistryValueKind.ExpandString, kind);
+
+        Assert.True(Env.RemoveFromPath(@"C:\Apps\AiRamGuard", _var));
+        Assert.False(Env.RemoveFromPath(@"C:\Apps\AiRamGuard", _var));
+        Assert.Equal(@"%USERPROFILE%\bin;C:\Tools\", Raw(_var, out _));
+    }
+
     public void Dispose()
     {
         using (var k = Registry.CurrentUser.CreateSubKey("Environment")) k.DeleteValue(_var, throwOnMissingValue: false);

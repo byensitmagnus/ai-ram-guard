@@ -237,7 +237,7 @@ public static class Mover
 }
 
 /// <summary>User environment variables, read and written raw so an undo restores exactly what was there (%USERPROFILE%-style values too).</summary>
-static class Env
+public static class Env
 {
     public static EnvBackup Backup(string name)
     {
@@ -253,6 +253,33 @@ static class Env
         if (value is null) k.DeleteValue(name, throwOnMissingValue: false);
         else k.SetValue(name, value, expand ? RegistryValueKind.ExpandString : RegistryValueKind.String);
     }
+
+    /// <summary>Adds a folder to the user's PATH once, keeping the value's type. True when PATH changed.</summary>
+    /// <param name="name">The variable (tests use their own).</param>
+    public static bool AddToPath(string dir, string name = "Path")
+    {
+        var b = Backup(name);
+        var entries = Split(b.Value);
+        if (entries.Any(e => SameDir(e, dir))) return false;
+        Set(name, string.Join(';', entries.Append(dir)), b.Value is null || b.Expand); // Windows' own user PATH is REG_EXPAND_SZ
+        return true;
+    }
+
+    /// <summary>Removes exactly that folder from the user's PATH. True when PATH changed.</summary>
+    public static bool RemoveFromPath(string dir, string name = "Path")
+    {
+        var b = Backup(name);
+        var entries = Split(b.Value);
+        var kept = entries.Where(e => !SameDir(e, dir)).ToList();
+        if (kept.Count == entries.Count) return false;
+        Set(name, kept.Count == 0 ? null : string.Join(';', kept), b.Expand);
+        return true;
+    }
+
+    static List<string> Split(string? path) => (path ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+    static bool SameDir(string entry, string dir) => string.Equals(
+        Environment.ExpandEnvironmentVariables(entry).Trim().TrimEnd('\\'), dir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Tells Explorer and other apps the variables changed, so programs started from now on see them.</summary>
     public static void Broadcast() => SendMessageTimeout(0xFFFF, 0x001A, UIntPtr.Zero, "Environment", 2, 1000, out _); // HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG
