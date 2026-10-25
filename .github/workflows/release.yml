@@ -29,9 +29,19 @@ jobs:
         run: |
           Compress-Archive out/sc/*.exe AiRamGuard-win-x64.zip
           Compress-Archive out/fd/*.exe AiRamGuard-win-x64-framework.zip
+          Get-FileHash *.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content SHA256SUMS.txt
+      - name: Release notes from CHANGELOG
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          $c = Get-Content CHANGELOG.md -Raw
+          $notes = if ($c -match "(?s)## $([regex]::Escape($v))[^\n]*\n(.*?)(?=\n## |\z)") { $Matches[1].Trim() } else { "" }
+          Set-Content notes.md $notes
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             AiRamGuard-win-x64.zip
             AiRamGuard-win-x64-framework.zip
+            SHA256SUMS.txt
+          body_path: notes.md
           generate_release_notes: true

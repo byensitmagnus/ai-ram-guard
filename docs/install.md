@@ -63,6 +63,6 @@ Everything is on the *Settings* page in the app. The file behind it is `%APPDATA
 
 ## Uninstall
 
-*Settings → Apps → AI RAM Guard → Uninstall*, or *Uninstall…* at the bottom of the app's *Settings* page. That removes the app, its shortcut and autostart. Delete the two folders above too if you want your settings and history gone.
+*Settings → Apps → AI RAM Guard → Uninstall*, or *Uninstall…* at the bottom of the app's *Settings* page. For scripts: `"%LOCALAPPDATA%\Programs\AiRamGuard\AiRamGuard.exe" --uninstall --quiet`. That removes the app, its shortcut and autostart. Delete the two folders above too if you want your settings and history gone.
 
 Portable copy: switch off *Start with Windows* in the app, exit it from the tray menu and delete the folder.

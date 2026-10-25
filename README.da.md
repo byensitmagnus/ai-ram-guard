@@ -10,11 +10,13 @@
 
 > Det startede med en gaming-PC med 32 GB RAM, der løb tør midt i et spil. Synderen var ikke spillet. Det var **48 processer af én MCP-server** og **25 af en anden**, startet af AI-sessioner i baggrunden.
 
-<p align="center"><img src="assets/screenshot-overview.png" alt="AI RAM Guard: RAM-ring, 24-timers historik og RAM pr. AI-program" width="880"></p>
+<p align="center"><img src="assets/demo.gif" alt="Rundtur i AI RAM Guard: overblik med RAM-ring og RAM pr. AI-program, anbefalinger, aktivitet og indstillinger" width="880"></p>
 
 ## Hvorfor sker det?
 
 Hver AI-session (en Claude Code-chat, en Codex-tråd, et Cursor-vindue) **starter sin egen kopi af alle dine MCP-servere**. Hver kopi er en Node.js- eller Python-proces på 100–250 MB. Ti sessioner med fem MCP-servere giver 50 processer, ofte med en ekstra `npx`-proces foran hver.
+
+Kendte fejlrapporter, som AI RAM Guard afhjælper på din PC, indtil de er rettet: [claude-code#101376](https://github.com/anthropics/claude-code/issues/101376), [#90362](https://github.com/anthropics/claude-code/issues/90362), [#58918](https://github.com/anthropics/claude-code/issues/58918) og [codex#32797](https://github.com/openai/codex/issues/32797). Hele listen står i den [engelske README](README.md#fixes-these-issues).
 
 ## Det gør AI RAM Guard
 

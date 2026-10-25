@@ -19,10 +19,11 @@
 
 > Built after a 32 GB gaming PC ran out of RAM in the middle of a game. The cause wasn't the game. It was **48 processes of one MCP server** and **25 of another**, started by AI sessions open in the background.
 
-<p align="center"><img src="assets/screenshot-overview.png" alt="AI RAM Guard overview: RAM ring, 24-hour history and RAM per AI app" width="880"></p>
+<p align="center"><img src="assets/demo.gif" alt="AI RAM Guard tour: overview with RAM ring and RAM per AI app, recommendations, activity timeline and settings" width="880"></p>
 
 ## Contents
 - [Why your AI tools eat RAM](#why-your-ai-tools-eat-ram)
+- [Fixes these issues](#fixes-these-issues)
 - [Features](#features)
 - [Install](#install)
 - [Command line](#command-line)
@@ -45,6 +46,20 @@ Every AI session (a Claude Code chat, a Codex thread, a Cursor window) **starts 
 When an app crashes or a session ends badly, its servers can also be left **orphaned**: still running, still holding RAM, with nobody using them. Task Manager only shows a long list of identical "Node.js JavaScript Runtime" rows.
 
 Read more: [Why Claude Code uses so much RAM on Windows](docs/why-ai-tools-use-so-much-ram.md).
+
+## Fixes these issues
+
+Hit one of these? AI RAM Guard works around it on your PC today, until it's fixed upstream: it closes the leftover processes and shows which config loads the duplicates.
+
+| Issue | What you see | Status (25 Oct 2026) |
+|---|---|---|
+| [anthropics/claude-code#101376](https://github.com/anthropics/claude-code/issues/101376) | Idle Claude Code sessions in Claude Desktop keep their MCP servers alive: 121 node processes, ~10 GB | open |
+| [anthropics/claude-code#90362](https://github.com/anthropics/claude-code/issues/90362) | MCP servers stuck in a respawn loop: 58+ orphaned `node.exe` in 13 hours | open |
+| [anthropics/claude-code#58918](https://github.com/anthropics/claude-code/issues/58918) | MCP child processes not terminated on Windows after a session exits | closed, not planned |
+| [anthropics/claude-code#51476](https://github.com/anthropics/claude-code/issues/51476) | High RAM use from Node MCP subprocesses on Windows | closed, duplicate |
+| [openai/codex#32797](https://github.com/openai/codex/issues/32797) | Codex Desktop on Windows keeps 147 `node.exe` processes, 13.9 GiB | open |
+
+On macOS? It's the same bug there ([claude-code#1935](https://github.com/anthropics/claude-code/issues/1935), [codex#30408](https://github.com/openai/codex/issues/30408)). A Mac version is on the [roadmap](#roadmap).
 
 ## Features
 
@@ -163,6 +178,8 @@ Not yet. The analysis core is platform-neutral; the process reader is Windows-on
 - [x] Analysis core, leftover cleanup, memory freeing, game mode, CLI and JSON
 - [x] Dashboard with history, recommendations from real config files, per-app caps, pause
 - [x] Per-user installer with Start menu, autostart and uninstall
+- [ ] See where AI tools write to disk, and move caches to another drive in one click (with rollback)
+- [ ] Lower CPU and memory priority for idle AI processes, instead of trimming them again and again
 - [ ] One-click config fixes (with backup) for the recommendations
 - [ ] winget and Scoop packages
 - [ ] Code-signed releases

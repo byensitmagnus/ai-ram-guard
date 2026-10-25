@@ -23,6 +23,10 @@ After an independent design and code review.
 - Keyboard: Ctrl+1–4 switch pages, F5 checks again, Esc closes the window
 - High-DPI screens: the window is scaled by Windows with sharp text instead of clipping
 
+**Install**
+- `AiRamGuard.exe --uninstall --quiet` removes the app without a dialog, so package managers like winget can uninstall it
+- Releases include `SHA256SUMS.txt`
+
 
 ## 1.0.0 (2026-10-25)
 

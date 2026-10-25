@@ -13,6 +13,7 @@ static class Program
 
         if (args is ["--screenshot", var dir]) return Screenshots.Render(dir);
         if (args is ["--uninstall"]) { Installer.ConfirmUninstall(); return 0; }
+        if (args is ["--uninstall", "--quiet"]) { Installer.Uninstall(); return 0; } // package managers: no dialog
         if (args is ["--install"]) { Installer.Install(); return 0; } // silent install for scripts and package managers
 
         using var single = new Mutex(true, @"Local\AiRamGuard.Tray", out var first);

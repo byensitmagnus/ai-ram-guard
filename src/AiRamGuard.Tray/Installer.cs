@@ -42,6 +42,7 @@ static class Installer
             k.SetValue("DisplayIcon", InstalledExe);
             k.SetValue("InstallLocation", Dir);
             k.SetValue("UninstallString", $"\"{InstalledExe}\" --uninstall");
+            k.SetValue("QuietUninstallString", $"\"{InstalledExe}\" --uninstall --quiet");
             k.SetValue("URLInfoAbout", MainForm.RepoUrl);
             k.SetValue("HelpLink", MainForm.RepoUrl);
             k.SetValue("NoModify", 1, RegistryValueKind.DWord);
