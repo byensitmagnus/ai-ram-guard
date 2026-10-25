@@ -11,7 +11,15 @@ public sealed class PriorityTests : IDisposable
     /// <summary>This test run stands in for the terminal the child runs in.</summary>
     static readonly ProcessInfo Terminal = new(Environment.ProcessId, 0, "WindowsTerminal.exe", "", 0, Process.GetCurrentProcess().StartTime);
 
-    public PriorityTests() => Guard.ReadForeground = () => (0, true); // a game in front, no AI app
+    public PriorityTests()
+    {
+        Guard.ReadForeground = () => (0, true); // a game in front, no AI app
+        // CI runners start processes at low memory priority already, which the guard rightly leaves alone: start from Windows' default.
+        var h = OpenProcess(0x0200, false, _child.Id);
+        try { var normal = 5u; SetProcessInformation(h, 0, ref normal, 4); }
+        finally { CloseHandle(h); }
+        _child.PriorityClass = ProcessPriorityClass.Normal;
+    }
 
     ProcessInfo Info(DateTime? created = null) => new(_child.Id, Terminal.Pid, "ping.exe", "", 0, created ?? _child.StartTime);
 
@@ -114,5 +122,6 @@ public sealed class PriorityTests : IDisposable
     [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll")] static extern bool GetProcessInformation(IntPtr h, int cls, out uint info, uint size);
+    [DllImport("kernel32.dll")] static extern bool SetProcessInformation(IntPtr h, int cls, ref uint info, uint size);
     [DllImport("kernel32.dll")] static extern bool GetProcessInformation(IntPtr h, int cls, [In, Out] uint[] info, uint size);
 }
