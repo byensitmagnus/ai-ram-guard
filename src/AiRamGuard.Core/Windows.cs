@@ -7,7 +7,11 @@ namespace AiRamGuard.Core;
 public static class Paths
 {
     public static string ConfigDir { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AiRamGuard");
-    public static string LogFile { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AiRamGuard", "guard.log");
+    public static string DataDir { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AiRamGuard");
+    public static string LogFile { get; } = Path.Combine(DataDir, "guard.log");
+    public static string HistoryFile { get; } = Path.Combine(DataDir, "history.json");
+    public static string StatsFile { get; } = Path.Combine(DataDir, "stats.json");
+    public static string LineageFile { get; } = Path.Combine(DataDir, "lineage.json");
 }
 
 /// <summary>Reads processes and memory from Windows.</summary>
@@ -17,21 +21,24 @@ public static class SnapshotReader
     {
         var list = new List<ProcessInfo>();
         using (var search = new ManagementObjectSearcher(
-            "SELECT ProcessId, ParentProcessId, Name, CommandLine, WorkingSetSize, CreationDate FROM Win32_Process"))
+            "SELECT ProcessId, ParentProcessId, Name, CommandLine, WorkingSetSize, CreationDate, ExecutablePath FROM Win32_Process"))
         using (var results = search.Get())
         {
             foreach (ManagementObject o in results)
             {
                 using (o)
                 {
-                    var created = o["CreationDate"] is string c ? ManagementDateTimeConverter.ToDateTime(c) : DateTime.MinValue;
+                    var created = DateTime.MinValue; // unknown start time: never killed (TryKill can't match it)
+                    try { if (o["CreationDate"] is string c) created = ManagementDateTimeConverter.ToDateTime(c); }
+                    catch (Exception e) when (e is ArgumentOutOfRangeException or FormatException) { }
                     list.Add(new ProcessInfo(
                         Convert.ToInt32(o["ProcessId"]),
                         Convert.ToInt32(o["ParentProcessId"]),
                         (string?)o["Name"] ?? "",
                         (string?)o["CommandLine"] ?? "",
                         Convert.ToInt64(o["WorkingSetSize"] ?? 0L),
-                        created));
+                        created,
+                        (string?)o["ExecutablePath"] ?? ""));
                 }
             }
         }
@@ -67,27 +74,41 @@ public sealed record CleanResult(int Killed, int Trimmed, long FreeBeforeBytes, 
 /// <summary>Runs one guard round: read, decide, act, log.</summary>
 public static class Guard
 {
+    /// <summary>Reads and analyzes all processes, remembering which helpers an AI app started (see <see cref="Lineage"/>).</summary>
+    public static Report Scan(ProfileSet profiles)
+    {
+        var lineage = Lineage.Load(Paths.LineageFile);
+        var report = Analyzer.Analyze(SnapshotReader.Read(), profiles, lineage);
+        lineage.Save(Paths.LineageFile);
+        return report;
+    }
+
     public static (Report Report, Plan Plan) Inspect(GuardSettings s, ProfileSet profiles, bool force = false)
     {
-        var report = Analyzer.Analyze(SnapshotReader.Read(), profiles);
+        var report = Scan(profiles);
         var fg = Desktop.ForegroundPid();
         var game = Desktop.ForegroundIsFullscreen() && report.Agents.All(a => a.Processes.All(p => p.Pid != fg));
         return (report, Policy.Decide(report, s, fg, game, force));
     }
 
-    public static CleanResult Run(GuardSettings s, ProfileSet profiles, bool force = false, bool dryRun = false)
+    public static CleanResult Run(GuardSettings s, ProfileSet profiles, bool force = false, bool dryRun = false) =>
+        Execute(Inspect(s, profiles, force), dryRun);
+
+    /// <summary>Carries out a plan. Returns what really happened, not what was planned.</summary>
+    public static CleanResult Execute((Report Report, Plan Plan) inspected, bool dryRun = false)
     {
-        var (report, plan) = Inspect(s, profiles, force);
+        var (report, plan) = inspected;
         int killed = 0, trimmed = 0;
         foreach (var p in plan.Kill)
         {
-            if (dryRun || TryKill(p)) killed++;
-            Log.Write($"{(dryRun ? "would close" : "closed")} orphan {p.Name} {p.Pid} {p.WorkingSetBytes / 1048576} MB {Analyzer.HelperKey(p.CommandLine)}");
+            var ok = dryRun || TryKill(p);
+            if (ok) killed++;
+            Log.Write($"{(dryRun ? "would close" : ok ? "closed" : "could not close")} orphan {p.Name} {p.Pid} {p.WorkingSetBytes / 1048576} MB {Analyzer.HelperKey(p.CommandLine)}");
         }
         foreach (var p in plan.Trim)
-            if (dryRun || Native.TrimWorkingSet(p.Pid)) trimmed++;
+            if (dryRun || (IsSame(p) && Native.TrimWorkingSet(p.Pid))) trimmed++;
 
-        var after = dryRun ? report.Snapshot.FreeRamBytes : SnapshotFree();
+        var after = dryRun ? report.Snapshot.FreeRamBytes : FreeRamBytes();
         var result = new CleanResult(killed, trimmed, report.Snapshot.FreeRamBytes, after, plan.Reason);
         if (killed + trimmed > 0)
             Log.Write($"{(dryRun ? "[dry-run] " : "")}{plan.Reason}: closed {killed} orphans, trimmed {trimmed} AI processes, free {Gb(result.FreeBeforeBytes)} -> {Gb(after)} GB");
@@ -102,8 +123,7 @@ public static class Guard
         try
         {
             using var proc = Process.GetProcessById(p.Pid);
-            // Re-check identity: the PID could have been reused since the snapshot.
-            if (Math.Abs((proc.StartTime - p.Created).TotalSeconds) > 2) return false;
+            if (!IsSame(proc, p)) return false;
             proc.Kill();
             return true;
         }
@@ -113,11 +133,30 @@ public static class Guard
         }
     }
 
-    static long SnapshotFree()
+    /// <summary>Re-checks identity: the PID could have been reused since the snapshot.</summary>
+    static bool IsSame(ProcessInfo p)
+    {
+        try
+        {
+            using var proc = Process.GetProcessById(p.Pid);
+            return IsSame(proc, p);
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    static bool IsSame(Process proc, ProcessInfo p) => Math.Abs((proc.StartTime - p.Created).TotalSeconds) <= 2;
+
+    public static long FreeRamBytes() => Memory().Free;
+
+    /// <summary>Cheap memory reading (no process scan), for the live graph.</summary>
+    public static (long Total, long Free) Memory()
     {
         var mem = new Native.MEMORYSTATUSEX();
         Native.GlobalMemoryStatusEx(mem);
-        return (long)mem.ullAvailPhys;
+        return ((long)mem.ullTotalPhys, (long)mem.ullAvailPhys);
     }
 
     public static string Gb(long bytes) => (bytes / 1073741824.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
@@ -138,7 +177,7 @@ public static class Log
                 if (fi.Exists && fi.Length > 1_000_000) File.Move(Paths.LogFile, Paths.LogFile + ".old", true);
                 File.AppendAllText(Paths.LogFile, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {line}{Environment.NewLine}");
             }
-            catch (IOException) { } // logging must never stop the guard
+            catch (Exception) { } // logging must never stop the guard
         }
     }
 }

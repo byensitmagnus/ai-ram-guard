@@ -24,7 +24,7 @@ The code is split so the risky part, deciding what to touch, is pure and unit-te
 
 ## Ownership
 
-For every process, the analyzer walks up the parent chain until it reaches a process whose name an agent profile owns (`claude.exe`, `codex.exe`, `Cursor.exe` …). CLI agents without an app process (Gemini CLI) are recognised by their command line.
+For every process, the analyzer walks up the parent chain until it reaches a process an agent profile owns (`claude.exe`, `codex.exe`, `Cursor.exe` …). CLI agents without an app process (Gemini CLI) are recognised by their command line, but only when it runs in a script runtime such as `node.exe`, so an editor open on the same path doesn't count.
 
 ## Helpers and duplicates
 
@@ -32,22 +32,31 @@ A **helper** is a process whose command line matches a helper pattern: MCP serve
 
 ## Orphans: the rule
 
-A helper is an orphan when **walking up through helper processes ends at a parent that no longer exists**, or whose PID now belongs to a newer process (Windows reuses PIDs).
+A helper is an orphan when **both** are true:
+
+1. Walking up through helper processes ends at a parent that no longer exists, or whose PID now belongs to a newer process (Windows reuses PIDs).
+2. In an earlier scan, AI RAM Guard **saw it running under a live AI app**, started by the app through helpers only. These are remembered in `%LOCALAPPDATA%\AiRamGuard\lineage.json` by PID plus start time.
+
+A dead parent alone proves nothing: apps started with `start`, a launcher or Task Scheduler have one too. Rule 2 is why leftovers that already existed before the first scan are not closed, and why a dev server an agent started in a shell (`claude → pwsh → node server.mjs`) survives the agent.
 
 So:
 
 | Chain | Orphan? |
 |---|---|
 | `server ← npx ← cmd /c npx ← claude.exe (running)` | No, owned by Claude |
-| `server ← npx ← cmd /c npx ← (gone)` | **Yes** |
+| `server ← npx ← cmd /c npx ← (gone)`, earlier seen under Claude | **Yes** |
+| `server ← npx ← (gone)`, never seen under an AI app | No |
+| `node server.mjs ← pwsh ← (Claude, gone)` | No, `pwsh` is not a helper |
 | `server ← pwsh ← Windows Terminal` (you started it) | No, `pwsh` is not a helper |
 | `node my-app.js ← (gone)` | No, not a helper |
 
-Before closing, the process's start time is compared with the snapshot so a reused PID is never hit.
+Before closing, and before trimming, the process's start time is compared with the snapshot so a reused PID is never hit.
 
 ## Trimming
 
-When free RAM is below the limit (default 6 GB, 10 GB in game mode), every process owned by an AI app, **except the foreground window's**, gets `EmptyWorkingSet`. Windows moves its idle pages to the standby list and pagefile. The process keeps running; pages it touches again come back, so a busy agent doesn't lose anything except a few ms.
+When free RAM is below the limit (default 6 GB, 10 GB in game mode), every process owned by an AI app, **except the app in front**, gets `EmptyWorkingSet`. Windows moves its idle pages to the standby list and pagefile. The process keeps running; pages it touches again come back, so a busy agent doesn't lose anything except a few ms.
+
+"The app in front" is the AI app that owns the foreground window, or, for CLI agents, whose terminal is the foreground window (Windows Terminal is an ancestor of Claude Code running in it). Explorer doesn't count, since it starts nearly everything.
 
 Trimming lowers the number in Task Manager's "Memory" column right away and gives the RAM to whatever needs it, such as your game.
 
@@ -58,5 +67,5 @@ If the foreground window covers its whole monitor and doesn't belong to an AI ap
 ## What it never does
 
 - Close an AI app or a live session
-- Close anything that isn't a helper
+- Close anything that isn't a helper it saw an AI app start
 - Need admin rights, talk to the network or send telemetry

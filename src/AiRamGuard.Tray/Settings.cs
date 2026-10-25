@@ -9,6 +9,8 @@ sealed class AppSettings
     public GuardSettings Guard { get; set; } = new();
     public bool AutoGuard { get; set; } = true;
     public bool Notify { get; set; } = true;
+    /// <summary>The user chose "run without installing"; don't ask again.</summary>
+    public bool Portable { get; set; }
 
     static string File_ => Path.Combine(Paths.ConfigDir, "settings.json");
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
@@ -36,7 +38,7 @@ static class Autostart
         set
         {
             using var k = Registry.CurrentUser.CreateSubKey(Key);
-            if (value) k.SetValue(Name, $"\"{Environment.ProcessPath}\"");
+            if (value) k.SetValue(Name, $"\"{Environment.ProcessPath}\" --background");
             else k.DeleteValue(Name, false);
         }
     }

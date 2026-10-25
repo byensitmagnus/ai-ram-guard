@@ -4,135 +4,163 @@ using AiRamGuard.Core;
 
 namespace AiRamGuard.Tray;
 
+/// <summary>Lives in the notification area: runs the guard on a timer, keeps history, owns the window.</summary>
 sealed class TrayContext : ApplicationContext
 {
-    public static readonly Color Brand = ColorTranslator.FromHtml("#ba01c4");
-    const string RepoUrl = "https://github.com/byensitmagnus/ai-ram-guard";
-
+    readonly AppState _state = new();
     readonly NotifyIcon _icon = new() { Visible = true, Text = "AI RAM Guard" };
-    readonly System.Windows.Forms.Timer _timer = new();
-    readonly AppSettings _s = AppSettings.Load();
-    readonly ProfileSet _profiles = ProfileSet.Load();
-    readonly ToolStripMenuItem _status = new() { Enabled = false };
+    readonly System.Windows.Forms.Timer _guardTimer = new(), _sampleTimer = new() { Interval = 60_000 };
+    readonly ToolStripMenuItem _status = new() { Enabled = false }, _pause = new("Pause for 1 hour");
+    readonly SynchronizationContext _ui;
     DateTime _lastToast = DateTime.MinValue;
-    ReportForm? _form;
-    bool _busy;
+    MainForm? _form;
+    int _samplesSinceSave;
 
-    public TrayContext()
+    public TrayContext(bool showWindow)
     {
+        _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+        _state.RunNow = force => RunRound(force);
+        _state.Pause = Pause;
+
         _icon.ContextMenuStrip = BuildMenu();
-        _icon.DoubleClick += (_, _) => ShowReport();
-        _timer.Interval = Math.Max(30, _s.Guard.IntervalSeconds) * 1000;
-        _timer.Tick += (_, _) => Tick(force: false);
-        _timer.Start();
-        Tick(force: false);
+        _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowWindow(); };
+        _guardTimer.Interval = Math.Max(30, _state.Settings.Guard.IntervalSeconds) * 1000;
+        _guardTimer.Tick += (_, _) => RunRound(force: false);
+        _sampleTimer.Tick += (_, _) => Sample();
+        _guardTimer.Start();
+        _sampleTimer.Start();
+
+        Signals.Listen(Signals.Show, () => _ui.Post(_ => ShowWindow(), null));
+        Signals.Listen(Signals.Exit, () => _ui.Post(_ => ExitThread(), null));
+
+        RunRound(force: false);
+        if (showWindow) ShowWindow();
     }
 
     ContextMenuStrip BuildMenu()
     {
-        var m = new ContextMenuStrip();
+        var m = new ContextMenuStrip { Renderer = new MenuRenderer(Theme.Current), ShowImageMargin = true };
+        var open = new ToolStripMenuItem("Open AI RAM Guard", null, (_, _) => ShowWindow()) { Font = new Font(m.Font, FontStyle.Bold) };
+        m.Items.Add(open);
         m.Items.Add(_status);
         m.Items.Add(new ToolStripSeparator());
-        m.Items.Add("Show AI RAM report…", null, (_, _) => ShowReport());
-        m.Items.Add("Free RAM now", null, (_, _) => Tick(force: true));
+        m.Items.Add("Free RAM now", null, (_, _) => RunRound(force: true));
+        _pause.Click += (_, _) => Pause(_state.Paused ? null : TimeSpan.FromHours(1));
+        m.Items.Add(_pause);
         m.Items.Add(new ToolStripSeparator());
-        m.Items.Add(Toggle("Auto guard", () => _s.AutoGuard, v => _s.AutoGuard = v));
-        m.Items.Add(Toggle("Game mode (stricter while a fullscreen game runs)", () => _s.Guard.GameMode, v => _s.Guard.GameMode = v));
-        m.Items.Add(Toggle("Close orphaned MCP servers", () => _s.Guard.KillOrphans, v => _s.Guard.KillOrphans = v));
-        m.Items.Add(Toggle("Notifications", () => _s.Notify, v => _s.Notify = v));
-
-        var limit = new ToolStripMenuItem("Free AI memory when free RAM is below");
-        foreach (var gb in new[] { 2, 4, 6, 8, 12, 16 })
-        {
-            var item = new ToolStripMenuItem($"{gb} GB") { Checked = _s.Guard.MinFreeMB == gb * 1024 };
-            item.Click += (_, _) =>
-            {
-                _s.Guard.MinFreeMB = gb * 1024;
-                _s.Guard.GameModeMinFreeMB = Math.Max(_s.Guard.GameModeMinFreeMB, gb * 1024);
-                _s.Save();
-                foreach (ToolStripMenuItem i in limit.DropDownItems) i.Checked = i == item;
-            };
-            limit.DropDownItems.Add(item);
-        }
-        m.Items.Add(limit);
-        m.Items.Add(Toggle("Start with Windows", () => Autostart.Enabled, v => Autostart.Enabled = v, save: false));
-        m.Items.Add(new ToolStripSeparator());
-        m.Items.Add("Open log", null, (_, _) => Open(File.Exists(Paths.LogFile) ? Paths.LogFile : Path.GetDirectoryName(Paths.LogFile)!));
-        m.Items.Add("Add your own AI app…", null, (_, _) => OpenUserProfiles());
-        m.Items.Add("About / GitHub", null, (_, _) => Open(RepoUrl));
         m.Items.Add("Exit", null, (_, _) => ExitThread());
+        m.Opening += (_, _) => _pause.Text = _state.Paused ? "Resume guarding" : "Pause for 1 hour";
         return m;
     }
 
-    ToolStripMenuItem Toggle(string text, Func<bool> get, Action<bool> set, bool save = true)
+    void Pause(TimeSpan? span)
     {
-        var item = new ToolStripMenuItem(text) { Checked = get(), CheckOnClick = true };
-        item.CheckedChanged += (_, _) => { set(item.Checked); if (save) _s.Save(); };
-        return item;
+        _state.Settings.Guard.PausedUntil = span is null ? null : DateTime.Now + span;
+        _state.Settings.Save();
+        Log.Write(span is null ? "resumed" : $"paused until {_state.Settings.Guard.PausedUntil:HH:mm}");
+        _state.Notify();
+        Render();
     }
 
-    async void Tick(bool force)
+    async void RunRound(bool force)
     {
-        if (_busy) return;
-        _busy = true;
+        if (_state.Busy) return;
+        _state.Busy = true;
+        _state.Notify();
+        var s = _state.Settings;
+        _guardTimer.Interval = Math.Max(30, s.Guard.IntervalSeconds) * 1000;
         try
         {
-            var dryRun = !force && !_s.AutoGuard; // auto guard off: only measure
-            var (result, report) = await Task.Run(() =>
+            var dryRun = !force && !s.AutoGuard; // auto guard off: only measure
+            var (result, report, advice, game) = await Task.Run(() =>
             {
-                var r = Guard.Run(_s.Guard, _profiles, force, dryRun);
-                return (r, Analyzer.Analyze(SnapshotReader.Read(), _profiles));
+                var inspected = Guard.Inspect(s.Guard, _state.Profiles, force);
+                var game = Desktop.ForegroundIsFullscreen();
+                var r = Guard.Execute(inspected, dryRun);
+                var after = r.Killed + r.Trimmed > 0 && !dryRun ? Guard.Scan(_state.Profiles) : inspected.Report;
+                return (r, after, Advisor.Advise(after, KnownConfigs.Read()), game);
             });
-            Render(report);
-            var freed = result.FreeAfterBytes - result.FreeBeforeBytes;
-            if (force)
-                _icon.ShowBalloonTip(3000, "AI RAM Guard", $"Freed {Guard.Gb(Math.Max(0, freed))} GB. Closed {result.Killed} orphans, trimmed {result.Trimmed} AI processes.", ToolTipIcon.Info);
-            else if (_s.Notify && !dryRun && freed > 1L << 30 && DateTime.Now - _lastToast > TimeSpan.FromMinutes(30))
+
+            _state.Report = report;
+            _state.Advice = advice;
+            _state.Last = result;
+            _state.LastRun = DateTime.Now;
+            _state.GameActive = game;
+            if (!dryRun && result.Killed + result.Trimmed > 0)
             {
-                _lastToast = DateTime.Now;
-                _icon.ShowBalloonTip(3000, "AI RAM Guard", $"Freed {Guard.Gb(freed)} GB from AI apps ({result.Reason}).", ToolTipIcon.Info);
+                _state.Stats.Record(result);
+                _state.Stats.Save(Paths.StatsFile);
             }
+            if (_state.History.Samples.Count == 0) Sample();
+            Toast(result, force, dryRun);
         }
-        catch (Exception e) when (e is System.Management.ManagementException or System.Runtime.InteropServices.COMException)
+        catch (Exception e) // async void: anything unhandled here would crash the app, and it restarts at every login
         {
-            Log.Write($"scan failed: {e.Message}");
+            Log.Write($"round failed: {e.Message}");
         }
         finally
         {
-            _busy = false;
+            _state.Busy = false;
+            _state.Notify();
+            Render();
             if (_form is null) Guard.TrimSelf();
         }
     }
 
-    void Render(Report r)
+    void Toast(CleanResult r, bool force, bool dryRun)
     {
-        var s = r.Snapshot;
-        var usedPct = 1 - (double)s.FreeRamBytes / s.TotalRamBytes;
-        var aiPct = (double)r.AiBytes / s.TotalRamBytes;
-        var text = $"Free {Guard.Gb(s.FreeRamBytes)} GB · AI apps {Guard.Gb(r.AiBytes)} GB";
-        _status.Text = text + (r.Orphans.Count > 0 ? $" · {r.Orphans.Count} orphans" : "");
-        _icon.Text = ("AI RAM Guard\n" + text)[..Math.Min(127, 13 + text.Length)];
-        var old = _icon.Icon;
-        _icon.Icon = DrawIcon(usedPct, aiPct);
-        old?.Dispose();
-        _form?.Render(r);
+        var freed = r.FreeAfterBytes - r.FreeBeforeBytes;
+        if (force)
+            _icon.ShowBalloonTip(3000, "AI RAM Guard", $"Freed {Theme.Size(Math.Max(0, freed))}. Closed {r.Killed} leftovers, freed memory in {r.Trimmed} AI processes.", ToolTipIcon.Info);
+        else if (_state.Settings.Notify && !dryRun && freed > 1L << 30 && DateTime.Now - _lastToast > TimeSpan.FromMinutes(30))
+        {
+            _lastToast = DateTime.Now;
+            _icon.ShowBalloonTip(3000, "AI RAM Guard", $"Freed {Theme.Size(freed)} from AI apps ({r.Reason}).", ToolTipIcon.Info);
+        }
     }
 
-    /// <summary>A ring: grey = RAM used by everything, brand colour = the part AI apps use.</summary>
-    static Icon DrawIcon(double usedPct, double aiPct)
+    /// <summary>Cheap once-a-minute reading for the graph; the AI share comes from the latest full scan.</summary>
+    void Sample()
+    {
+        var (total, free) = Guard.Memory();
+        _state.History.Add(new Sample(DateTime.Now, (int)(free >> 20), (int)((_state.Report?.AiBytes ?? 0) >> 20), (int)(total >> 20)));
+        if (++_samplesSinceSave >= 10)
+        {
+            _samplesSinceSave = 0;
+            _state.History.Save(Paths.HistoryFile);
+        }
+        _state.Notify();
+    }
+
+    void Render()
+    {
+        if (_state.Report is not { } r) return;
+        var s = r.Snapshot;
+        var text = $"{Theme.Size(s.FreeRamBytes)} free · AI apps {Theme.Size(r.AiBytes)}";
+        _status.Text = $"{_state.StatusText} · {text}";
+        var tip = $"AI RAM Guard · {_state.StatusText}\n{text}";
+        _icon.Text = tip.Length > 127 ? tip[..127] : tip;
+        var old = _icon.Icon;
+        _icon.Icon = DrawIcon(1 - (double)s.FreeRamBytes / s.TotalRamBytes, (double)r.AiBytes / s.TotalRamBytes, _state.Paused);
+        old?.Dispose();
+    }
+
+    /// <summary>Ring: grey = RAM in use, brand colour = the AI share. Dimmed while paused.</summary>
+    static Icon DrawIcon(double usedPct, double aiPct, bool paused)
     {
         using var bmp = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             var rect = new Rectangle(3, 3, 26, 26);
+            var brand = paused ? Color.Gray : Theme.Brand;
             using var track = new Pen(Color.FromArgb(90, 128, 128, 128), 6);
-            using var used = new Pen(usedPct > 0.85 ? Color.OrangeRed : Color.Gray, 6);
-            using var ai = new Pen(Brand, 6);
+            using var used = new Pen(usedPct > 0.85 ? Color.OrangeRed : Color.FromArgb(150, 150, 160), 6);
+            using var ai = new Pen(brand, 6);
             g.DrawEllipse(track, rect);
             g.DrawArc(used, rect, -90, (float)(360 * usedPct));
             g.DrawArc(ai, rect, -90, (float)(360 * Math.Min(aiPct, usedPct)));
-            using var dot = new SolidBrush(Brand);
+            using var dot = new SolidBrush(brand);
             g.FillEllipse(dot, 12, 12, 8, 8);
         }
         var h = bmp.GetHicon();
@@ -144,43 +172,45 @@ sealed class TrayContext : ApplicationContext
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);
 
-    void ShowReport()
+    void ShowWindow()
     {
         if (_form is null || _form.IsDisposed)
         {
-            _form = new ReportForm(() => Tick(force: true));
-            _form.FormClosed += (_, _) => _form = null;
+            _form = new MainForm(_state);
+            _form.FormClosed += (_, _) => { _form = null; Guard.TrimSelf(); };
         }
-        _form.Visible = true;
+        _form.Show();
+        if (_form.WindowState == FormWindowState.Minimized) _form.WindowState = FormWindowState.Normal;
         _form.Activate();
-        Tick(force: false);
     }
-
-    void OpenUserProfiles()
-    {
-        var file = Path.Combine(Paths.ConfigDir, "profiles.json");
-        if (!File.Exists(file))
-        {
-            Directory.CreateDirectory(Paths.ConfigDir);
-            File.WriteAllText(file, """
-            {
-              "helperPatterns": [],
-              "agents": [
-                { "id": "my-agent", "name": "My AI app", "processNames": ["MyAiApp"], "helperPatterns": ["my-mcp-server"] }
-              ]
-            }
-            """);
-        }
-        Open(file);
-    }
-
-    static void Open(string target) => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
 
     protected override void ExitThreadCore()
     {
-        _timer.Dispose();
+        _state.History.Save(Paths.HistoryFile);
+        _guardTimer.Dispose();
+        _sampleTimer.Dispose();
+        _form?.Close();
         _icon.Visible = false;
         _icon.Dispose();
         base.ExitThreadCore();
+    }
+}
+
+/// <summary>Named events so a second launch can show the window, and the installer can stop a running copy.</summary>
+static class Signals
+{
+    public const string Show = @"Local\AiRamGuard.Show", Exit = @"Local\AiRamGuard.Exit";
+
+    public static void Listen(string name, Action onSignal)
+    {
+        var ev = new EventWaitHandle(false, EventResetMode.AutoReset, name);
+        ThreadPool.RegisterWaitForSingleObject(ev, (_, _) => onSignal(), null, Timeout.Infinite, executeOnlyOnce: false);
+    }
+
+    public static bool Send(string name)
+    {
+        if (!EventWaitHandle.TryOpenExisting(name, out var ev)) return false;
+        using (ev) ev.Set();
+        return true;
     }
 }

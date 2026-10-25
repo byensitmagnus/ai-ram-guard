@@ -44,7 +44,8 @@
       "id": "gemini",
       "name": "Gemini CLI",
       "processNames": [],
-      "helperPatterns": ["@google/gemini-cli", "gemini-cli"]
+      "cliPatterns": ["@google[\\\\/]gemini-cli", "gemini-cli"],
+      "helperPatterns": []
     },
     {
       "id": "grok",

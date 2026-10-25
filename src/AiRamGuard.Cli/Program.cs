@@ -6,6 +6,7 @@ AI RAM Guard (airg) - stop AI agents and MCP servers from eating your RAM.
 
 Usage:
   airg scan [--json]          Show RAM per AI app, duplicate MCP servers and orphans
+  airg advise [--json]        Permanent fixes: duplicated MCP servers, npx wrappers, which config to change
   airg clean [--dry-run]      Close orphans and trim AI apps now (ignores the threshold)
   airg watch [--min-free GB] [--interval SEC] [--no-game-mode]
                               Guard continuously (what the tray app does)
@@ -26,9 +27,23 @@ if (Has("--no-game-mode")) settings.GameMode = false;
 switch (cmd)
 {
     case "scan":
-        var report = Analyzer.Analyze(SnapshotReader.Read(), profiles);
+        var report = Guard.Scan(profiles);
         if (Has("--json")) Console.WriteLine(JsonSerializer.Serialize(ToJson(report), new JsonSerializerOptions { WriteIndented = true }));
         else Print(report);
+        return 0;
+
+    case "advise":
+        var advice = Advisor.Advise(Guard.Scan(profiles), KnownConfigs.Read());
+        if (Has("--json"))
+            Console.WriteLine(JsonSerializer.Serialize(advice.Select(a => new { kind = a.Kind.ToString(), a.Title, a.Detail, savingsMB = a.SavingsBytes / 1048576, a.ConfigPath }), new JsonSerializerOptions { WriteIndented = true }));
+        else if (advice.Count == 0) Console.WriteLine("Nothing to fix. No duplicated MCP servers and no leftovers.");
+        else
+            foreach (var a in advice)
+            {
+                Console.WriteLine($"{a.Title}{(a.SavingsBytes > 0 ? $"  (saves ~{a.SavingsBytes / 1048576:N0} MB)" : "")}");
+                Console.WriteLine($"  {a.Detail}");
+                Console.WriteLine();
+            }
         return 0;
 
     case "clean":
