@@ -29,7 +29,7 @@ public sealed record MoveResult(bool Ok, string Message, long MovedBytes = 0, lo
 
 public static class Storage
 {
-    static string Home => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    internal static string Home => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     static string Local => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
     static string Roaming => Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
@@ -56,7 +56,9 @@ public static class Storage
         var set = Environment.GetEnvironmentVariable(s.EnvVars[0], EnvironmentVariableTarget.User)
             ?? Environment.GetEnvironmentVariable(s.EnvVars[0], EnvironmentVariableTarget.Machine)
             ?? (s.Id == "npm" ? NpmrcCache() : null); // npm reads its variable before ~/.npmrc, so this order matches npm's
-        return !string.IsNullOrWhiteSpace(set) ? Path.GetFullPath(Environment.ExpandEnvironmentVariables(set)) : s.Defaults.FirstOrDefault(Directory.Exists) ?? s.Defaults[0];
+        if (string.IsNullOrWhiteSpace(set)) return s.Defaults.FirstOrDefault(Directory.Exists) ?? s.Defaults[0];
+        var path = Environment.ExpandEnvironmentVariables(set);
+        return Path.IsPathFullyQualified(path) ? Path.GetFullPath(path) : path; // relative stays relative: it means wherever the tool starts, not where we do
     }
 
     /// <summary>
@@ -85,7 +87,8 @@ public static class Storage
         var path = CurrentPath(s);
         var real = RealPath(path);
         var system = Path.GetPathRoot(Environment.SystemDirectory);
-        return new SpotUsage(s, path, real, Directory.Exists(path), FolderBytes(path),
+        var exists = Path.IsPathFullyQualified(path) && Directory.Exists(path);
+        return new SpotUsage(s, path, real, exists, exists ? FolderBytes(path) : 0,
             string.Equals(Path.GetPathRoot(real), system, StringComparison.OrdinalIgnoreCase));
     }
 
@@ -111,6 +114,18 @@ public static class Storage
             new EnumerationOptions { RecurseSubdirectories = recurse, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint })
         { ShouldIncludePredicate = (ref FileSystemEntry e) => !e.IsDirectory }.Sum());
 
+    /// <summary>
+    /// Junctions and symbolic links inside a folder, not followed. Hugging Face makes one per model file when Developer Mode is on.
+    /// robocopy can't recreate links without admin rights (error 1314, even in Developer Mode), so a move would leave them behind, split from their files.
+    /// </summary>
+    public static int LinkCount(string path) => !Directory.Exists(path) ? 0 : Safe(() =>
+        new FileSystemEnumerable<bool>(path, (ref FileSystemEntry e) => true,
+            new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 })
+        {
+            ShouldIncludePredicate = (ref FileSystemEntry e) => (e.Attributes & FileAttributes.ReparsePoint) != 0,
+            ShouldRecursePredicate = (ref FileSystemEntry e) => (e.Attributes & FileAttributes.ReparsePoint) == 0,
+        }.Count());
+
     /// <summary>A folder can vanish or lock mid-walk (temp files do): count what was there instead of failing.</summary>
     static T? Safe<T>(Func<T> f)
     {
@@ -134,18 +149,30 @@ public static class Mover
 {
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
-    public static List<MoveRecord> History(string? file = null)
+    public static List<MoveRecord> History(string? file = null) => Load(file ?? Paths.MovesFile) ?? [];
+
+    /// <summary>The spots whose last move still holds: the variable points where it was moved. Only those can be undone.</summary>
+    public static HashSet<string> Undoable(string? file = null) =>
+        History(file).GroupBy(m => m.Id).Select(g => g.Last())
+            .Where(m => Storage.Known.FirstOrDefault(k => k.Id == m.Id) is { } s && Same(Storage.CurrentPath(s), m.To))
+            .Select(m => m.Id).ToHashSet();
+
+    /// <summary>Null when the file is there but can't be read: a move must not then overwrite the undo records in it.</summary>
+    static List<MoveRecord>? Load(string file)
     {
-        file ??= Paths.MovesFile;
         try { return File.Exists(file) ? JsonSerializer.Deserialize<List<MoveRecord>>(File.ReadAllText(file)) ?? [] : []; }
-        catch (JsonException) { return []; }
+        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException) { return null; }
     }
 
+    /// <summary>Written next to it, then swapped in: a crash mid-write leaves the old records, never half a file.</summary>
     static void Save(List<MoveRecord> records, string file)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        File.WriteAllText(file, JsonSerializer.Serialize(records, Json));
+        File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(records, Json));
+        File.Move(file + ".tmp", file, overwrite: true);
     }
+
+    static string Unreadable(string file) => $"{file} can't be read, and it holds how to undo earlier moves. Fix or remove it first. Nothing was changed.";
 
     /// <param name="file">The undo record (tests use their own).</param>
     public static MoveResult Move(StorageSpot s, string to, string? file = null)
@@ -153,11 +180,16 @@ public static class Mover
         file ??= Paths.MovesFile;
         if (!s.Movable) return new(false, $"{s.Name} holds sessions and settings. Close the app and move it yourself with {s.EnvVars[0]}.");
         to = Path.GetFullPath(to);
-        var records = History(file);
+        if (Load(file) is not { } records) return new(false, Unreadable(file));
         var last = records.LastOrDefault(m => m.Id == s.Id);
         // Moving again to the same folder picks up what was in use last time.
         var retry = last is not null && Same(last.To, to) && Same(Storage.CurrentPath(s), to);
         var from = retry ? last!.From : Storage.CurrentPath(s);
+        // A mistyped variable (HF_HOME=D:\ or a relative path) would make "the cache" a whole drive or your profile.
+        if (!Path.IsPathFullyQualified(from) || Same(Path.GetPathRoot(from)!, from) || Same(from, Storage.Home))
+            return new(false, $"{s.EnvVars[0]} points at {from}, not at a cache folder. Fix it first. Nothing was changed.");
+        if (s.CopyContents && Storage.LinkCount(from) is var links and > 0)
+            return new(false, $"{from} has {links} links in it (Hugging Face makes them in Developer Mode). Windows only lets an admin copy links, so it would move half. Move it yourself from an admin prompt with robocopy /E /MOVE /SL, then set {s.EnvVars[0]}. Nothing was changed.");
         var root = Path.GetPathRoot(to)!;
         if (Same(root, to)) return new(false, "Pick a folder, not a whole drive.");
         if (new DriveInfo(root).DriveType != DriveType.Fixed) return new(false, $"{root} is not a fixed drive: tools would break while it is unplugged.");
@@ -171,7 +203,8 @@ public static class Mover
         if (!retry)
         {
             records.Add(new MoveRecord(s.Id, from, to, s.EnvVars.Select(Env.Backup).ToList(), DateTime.Now));
-            Save(records, file);
+            try { Save(records, file); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return new(false, $"Couldn't write {file}: {e.Message} Nothing was changed."); }
         }
 
         Directory.CreateDirectory(to);
@@ -193,9 +226,11 @@ public static class Mover
     public static MoveResult Undo(StorageSpot s, string? file = null)
     {
         file ??= Paths.MovesFile;
-        var records = History(file);
+        if (Load(file) is not { } records) return new(false, Unreadable(file));
         var r = records.LastOrDefault(m => m.Id == s.Id);
         if (r is null) return new(false, $"{s.Name} was not moved by AI RAM Guard.");
+        // You pointed it somewhere else since: putting the old value back would quietly undo your choice.
+        if (!Same(Storage.CurrentPath(s), r.To)) return new(false, $"{s.EnvVars[0]} no longer points at {r.To}: you changed it since. Nothing was changed.");
         if (s.CopyContents && Directory.Exists(r.To))
         {
             Directory.CreateDirectory(r.From);
@@ -205,7 +240,8 @@ public static class Mover
         foreach (var e in r.Env) Env.Set(e.Name, e.Value, e.Expand);
         Env.Broadcast();
         records.Remove(r);
-        Save(records, file);
+        try { Save(records, file); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Log.Write($"undo of {s.Id} done, but {file} not updated: {e.Message}"); } // harmless: undoing again only finds an empty folder
         var left = Storage.FolderBytes(r.To);
         if (left == 0 && Directory.Exists(r.To) && !Directory.EnumerateFileSystemEntries(r.To).Any()) Directory.Delete(r.To);
         Log.Write($"undid move of {s.Id}: back to {r.From}");

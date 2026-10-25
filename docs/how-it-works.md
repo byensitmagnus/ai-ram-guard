@@ -70,7 +70,7 @@ Every round, AI apps that are not in front get **low memory priority** (`SetProc
 
 While a game is in front (game mode), they also get **below-normal CPU priority** and **EcoQoS** (`ProcessPowerThrottling`, the efficiency mode Task Manager marks with a leaf), so the game wins the CPU.
 
-Only values still at Windows' default are changed: a priority you or the app itself chose is kept. The original is put back when you switch to the app (a foreground hook reacts at once), when the game ends, when the guard is paused or turned off, and when AI RAM Guard exits. None of it needs admin rights. The one-shot CLI commands don't change priority, since nothing would be left running to restore it.
+Only values still at Windows' default are changed: a priority you or the app itself chose is kept. The original is put back when you switch to the app or the terminal it runs in (a foreground hook reacts at once), when the game ends, when the guard is paused or turned off, and when AI RAM Guard exits. None of it needs admin rights. The one-shot CLI commands don't change priority, since nothing would be left running to restore it.
 
 ## Disk
 
@@ -80,7 +80,9 @@ Only values still at Windows' default are changed: a priority you or the app its
 
 - The undo record (old raw value and type, or "not set") is saved before anything changes.
 - A file is removed from the old folder only after it was copied; files in use stay and are picked up by moving again.
-- `/XJ`: junctions are never followed, so nothing outside the cache moves.
+- A cache with junctions or symbolic links in it is not moved. Windows lets only an admin recreate links, so robocopy would leave them behind, split from their files. Hugging Face makes such links in Developer Mode; move that one yourself from an admin prompt (`robocopy /E /MOVE /SL`).
+- The variable must point at a real folder: a drive root, your user folder or a relative path is refused.
+- **Undo** refuses when you pointed the variable somewhere else since, so it never overwrites your own choice. A damaged undo file blocks new moves instead of being overwritten.
 - The target must be an empty or new folder on a fixed drive, never a drive root, so **Undo** can move everything in it back.
 - Temp files are not copied, only the variables switch.
 

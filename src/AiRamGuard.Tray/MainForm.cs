@@ -469,7 +469,7 @@ sealed class DiskPage : Page
     void Render()
     {
         if (_spots is null) { ShowCard("Could not measure the disk. See the log."); return; }
-        var moved = Mover.History().Select(m => m.Id).ToHashSet();
+        var moved = Mover.Undoable();
         var shown = _spots.Where(u => u.Exists || moved.Contains(u.Spot.Id)).OrderByDescending(u => u.Bytes).ToList();
         var onSystem = shown.Where(u => u.OnSystemDrive).Sum(u => u.Bytes);
         ShowCard($"{Theme.Size(onSystem)} on the system drive · {Theme.Size(shown.Sum(u => u.Bytes) - onSystem)} elsewhere",
@@ -496,6 +496,7 @@ sealed class DiskPage : Page
 
     async void MoveTo(SpotUsage u, DriveInfo d)
     {
+        if (_busy) return; // still measuring or moving: a yes here would be dropped
         var to = Storage.TargetFolder(u.Spot, d.Name);
         if (MessageBox.Show(FindForm(), $"Move {u.Spot.Name} ({Theme.Size(u.Bytes)}) to {to}?\n\nApps you start from now on use the new folder: restart the ones that are open. You can undo it on this page.",
             "AI RAM Guard", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
@@ -504,6 +505,7 @@ sealed class DiskPage : Page
 
     async void UndoMove(SpotUsage u)
     {
+        if (_busy) return;
         if (MessageBox.Show(FindForm(), $"Move {u.Spot.Name} back and restore {string.Join(" and ", u.Spot.EnvVars)} as it was?",
             "AI RAM Guard", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
         await RunAndReport(() => Mover.Undo(u.Spot), $"Moving {u.Spot.Name} back…");

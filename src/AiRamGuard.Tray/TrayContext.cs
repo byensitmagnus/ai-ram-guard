@@ -59,6 +59,7 @@ sealed class TrayContext : ApplicationContext
     {
         _state.Settings.Guard.PausedUntil = span is null ? null : DateTime.Now + span;
         _state.Settings.Save();
+        if (span is not null) Guard.RestorePriorities(); // paused means hands off now, not at the next round
         Log.Write(span is null ? "resumed" : $"paused until {_state.Settings.Guard.PausedUntil:HH:mm}");
         _state.Notify();
         Render();

@@ -63,18 +63,54 @@ public sealed class StorageTests : IDisposable
     }
 
     [Fact]
-    public void A_junction_inside_is_never_followed_so_nothing_outside_moves()
+    public void A_folder_with_links_is_refused_so_nothing_outside_moves_and_nothing_splits()
     {
         var outside = Path.Combine(_root, "outside");
         Directory.CreateDirectory(outside);
         File.WriteAllBytes(Path.Combine(outside, "keep.bin"), new byte[10]);
-        Junction(Path.Combine(Src, "link"), outside);
+        Junction(Path.Combine(Src, "sub", "link"), outside);
+        Assert.Equal(1, Storage.LinkCount(Src));
 
+        Assert.False(Mover.Move(Spot(), Dst, Records).Ok);
+        Assert.True(File.Exists(Path.Combine(outside, "keep.bin")));
+        Assert.Equal(1500, Storage.FolderBytes(Src));
+        Assert.False(Directory.Exists(Dst));
+        Assert.Null(Raw(_var, out _));
+        Assert.Empty(Mover.History(Records));
+    }
+
+    [Fact]
+    public void Refuses_when_the_variable_points_at_a_drive_or_a_relative_path()
+    {
+        foreach (var bad in new[] { Path.GetPathRoot(_root)!, "cache" })
+        {
+            using (var k = Registry.CurrentUser.CreateSubKey("Environment")) k.SetValue(_var, bad);
+            Assert.False(Mover.Move(Spot(), Dst, Records).Ok);
+        }
+        Assert.False(Directory.Exists(Dst));
+        Assert.Empty(Mover.History(Records));
+    }
+
+    [Fact]
+    public void Undo_keeps_a_folder_you_chose_since()
+    {
         Assert.True(Mover.Move(Spot(), Dst, Records).Ok);
-        Assert.True(File.Exists(Path.Combine(outside, "keep.bin")));
-        Assert.False(Directory.Exists(Path.Combine(Dst, "link")));
-        Mover.Undo(Spot(), Records);
-        Assert.True(File.Exists(Path.Combine(outside, "keep.bin")));
+        var mine = Path.Combine(_root, "mine");
+        using (var k = Registry.CurrentUser.CreateSubKey("Environment")) k.SetValue(_var, mine);
+        Assert.Empty(Mover.Undoable(Records)); // the page stops offering the undo
+        Assert.False(Mover.Undo(Spot(), Records).Ok);
+        Assert.Equal(mine, Raw(_var, out _));
+        Assert.Equal(1500, Storage.FolderBytes(Dst));
+    }
+
+    [Fact]
+    public void An_unreadable_undo_file_blocks_moves_instead_of_being_overwritten()
+    {
+        File.WriteAllText(Records, "{ half a file");
+        Assert.False(Mover.Move(Spot(), Dst, Records).Ok);
+        Assert.Equal("{ half a file", File.ReadAllText(Records));
+        Assert.Equal(1500, Storage.FolderBytes(Src));
+        Assert.Null(Raw(_var, out _));
     }
 
     [Fact]

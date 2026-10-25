@@ -8,10 +8,15 @@ public sealed class PriorityTests : IDisposable
 {
     readonly Process _child = Process.Start(new ProcessStartInfo("ping", "-n 60 127.0.0.1") { CreateNoWindow = true, UseShellExecute = false })!;
 
-    ProcessInfo Info(DateTime? created = null) => new(_child.Id, 0, "ping.exe", "", 0, created ?? _child.StartTime);
+    /// <summary>This test run stands in for the terminal the child runs in.</summary>
+    static readonly ProcessInfo Terminal = new(Environment.ProcessId, 0, "WindowsTerminal.exe", "", 0, Process.GetCurrentProcess().StartTime);
+
+    public PriorityTests() => Guard.ReadForeground = () => (0, true); // a game in front, no AI app
+
+    ProcessInfo Info(DateTime? created = null) => new(_child.Id, Terminal.Pid, "ping.exe", "", 0, created ?? _child.StartTime);
 
     static (Report, Plan) Round(IReadOnlyList<ProcessInfo> lower, bool cpu) =>
-        (new Report(new Snapshot(lower, 0, 0), [], []), new Plan([], [], "test") { Lower = lower, LowerCpu = cpu });
+        (new Report(new Snapshot([.. lower, Terminal], 0, 0), [], []), new Plan([], [], "test") { Lower = lower, LowerCpu = cpu });
 
     uint MemoryPriority()
     {
@@ -73,8 +78,35 @@ public sealed class PriorityTests : IDisposable
         Guard.RestorePriorities();
     }
 
+    [Fact]
+    public void What_is_in_front_when_the_plan_is_applied_wins_over_the_plan()
+    {
+        Guard.ReadForeground = () => (Terminal.Pid, false); // you switched to its terminal during the scan
+        Guard.Execute(Round([Info()], cpu: true), prioritize: true);
+        Assert.Equal(5u, MemoryPriority());
+        Assert.Equal(ProcessPriorityClass.Normal, CpuPriority());
+
+        Guard.ReadForeground = () => (0, false); // you left the game during the scan
+        Guard.Execute(Round([Info()], cpu: true), prioritize: true);
+        Assert.Equal(2u, MemoryPriority());
+        Assert.Equal(ProcessPriorityClass.Normal, CpuPriority());
+        Guard.RestorePriorities();
+    }
+
+    [Fact]
+    public void Switching_to_its_terminal_restores_at_once()
+    {
+        Guard.Execute(Round([Info()], cpu: true), prioritize: true);
+        Assert.Equal(2u, MemoryPriority());
+        Guard.ReadForeground = () => (Terminal.Pid, true);
+        Guard.ForegroundChanged();
+        Assert.Equal(5u, MemoryPriority());
+        Assert.Equal(ProcessPriorityClass.Normal, CpuPriority());
+    }
+
     public void Dispose()
     {
+        Guard.RestorePriorities();
         try { _child.Kill(); } catch (InvalidOperationException) { }
         _child.Dispose();
     }

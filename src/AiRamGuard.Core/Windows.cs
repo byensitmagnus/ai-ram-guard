@@ -136,7 +136,7 @@ public static class Guard
             freed += Math.Max(0, p.WorkingSetBytes - after);
             Trimmed[$"{p.Pid}:{p.Created.Ticks}"] = (now, after);
         }
-        if (prioritize) Prioritize(dryRun ? [] : plan.Lower, !dryRun && plan.LowerCpu);
+        if (prioritize) Prioritize(dryRun ? [] : plan.Lower, !dryRun && plan.LowerCpu, report.Snapshot.Processes.ToDictionary(p => p.Pid));
 
         var freeAfter = dryRun ? report.Snapshot.FreeRamBytes : FreeRamBytes();
         var result = new CleanResult(killed, trimmed, report.Snapshot.FreeRamBytes, freeAfter, plan.Reason, freed);
@@ -146,22 +146,36 @@ public static class Guard
     }
 
     /// <summary>What the guard changed in one process. It restores exactly that, and only while the value is still the one it set.</summary>
-    internal sealed class Lowered(ProcessInfo p)
+    /// <param name="front">Switching to any of these PIDs brings the process to the front: itself, its app, the terminal it runs in.</param>
+    internal sealed class Lowered(ProcessInfo p, HashSet<int> front)
     {
         public readonly ProcessInfo P = p;
+        public readonly HashSet<int> Front = front;
         public bool Memory, Cpu, Qos;
     }
 
     static readonly object PriorityGate = new(); // rounds run on the thread pool, foreground changes on the UI thread
     static readonly Dictionary<string, Lowered> LoweredNow = [];
 
+    /// <summary>The foreground window's PID and whether it is fullscreen. Tests replace it: their desktop has no game.</summary>
+    internal static Func<(int Pid, bool Fullscreen)> ReadForeground = () => (Desktop.ForegroundPid(), Desktop.ForegroundIsFullscreen());
+
     /// <summary>Lowers background AI processes and restores the ones that should not be lowered any more: in front now, gone, or the game is over.</summary>
-    static void Prioritize(IReadOnlyList<ProcessInfo> lower, bool cpu)
+    static void Prioritize(IReadOnlyList<ProcessInfo> lower, bool cpu, IReadOnlyDictionary<int, ProcessInfo> byPid)
     {
         lock (PriorityGate)
         {
-            var want = new Dictionary<string, ProcessInfo>();
-            foreach (var p in lower) want[$"{p.Pid}:{p.Created.Ticks}"] = p;
+            // The plan is seconds old (a scan takes that long) and the hook may already have fired: what is in front now wins.
+            var (fg, fullscreen) = ReadForeground();
+            cpu &= fullscreen;
+            var want = new Dictionary<string, (ProcessInfo P, HashSet<int> Front)>();
+            foreach (var p in lower)
+            {
+                // Explorer starts everything, so being in front of it says nothing (as in Policy).
+                HashSet<int> front = [p.Pid, .. Analyzer.Ancestors(p, byPid).Where(a => !string.Equals(a.Name, "explorer.exe", StringComparison.OrdinalIgnoreCase)).Select(a => a.Pid)];
+                if (front.Contains(fg)) { cpu = false; continue; } // an AI app is in front, so no game is
+                want[$"{p.Pid}:{p.Created.Ticks}"] = (p, front);
+            }
             var restored = 0;
             foreach (var key in LoweredNow.Keys.Where(k => !want.ContainsKey(k)).ToList())
             {
@@ -170,9 +184,9 @@ public static class Guard
                 LoweredNow.Remove(key);
             }
             var cpuBefore = LoweredNow.Values.Count(l => l.Cpu);
-            foreach (var (key, p) in want)
+            foreach (var (key, (p, front)) in want)
             {
-                if (!LoweredNow.TryGetValue(key, out var l)) LoweredNow[key] = l = new Lowered(p);
+                if (!LoweredNow.TryGetValue(key, out var l)) LoweredNow[key] = l = new Lowered(p, front);
                 if (!cpu && (l.Cpu || l.Qos)) { if (l.Cpu) restored++; Native.Restore(l, memory: false); }
                 Native.Lower(l, cpu);
             }
@@ -198,9 +212,9 @@ public static class Guard
         lock (PriorityGate)
         {
             if (LoweredNow.Count == 0) return;
-            var fg = Desktop.ForegroundPid();
+            var (fg, fullscreen) = ReadForeground();
             var cpuLowered = LoweredNow.Values.Any(l => l.Cpu || l.Qos);
-            if (!LoweredNow.Values.Any(l => l.P.Pid == fg) && !(cpuLowered && !Desktop.ForegroundIsFullscreen())) return;
+            if (!LoweredNow.Values.Any(l => l.Front.Contains(fg)) && !(cpuLowered && !fullscreen)) return;
         }
         RestorePriorities(); // the next round lowers what is still in the background
     }

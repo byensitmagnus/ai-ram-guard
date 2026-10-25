@@ -70,16 +70,19 @@ public static class Analyzer
     }
 
     /// <summary>True when <paramref name="ancestorPid"/> started <paramref name="p"/>, directly or further up.</summary>
-    public static bool HasAncestor(ProcessInfo p, int ancestorPid, IReadOnlyDictionary<int, ProcessInfo> byPid)
+    public static bool HasAncestor(ProcessInfo p, int ancestorPid, IReadOnlyDictionary<int, ProcessInfo> byPid) =>
+        Ancestors(p, byPid).Any(a => a.Pid == ancestorPid);
+
+    /// <summary>The processes that started <paramref name="p"/>, nearest first. Stops at a parent that is gone or whose PID now belongs to a newer process.</summary>
+    public static IEnumerable<ProcessInfo> Ancestors(ProcessInfo p, IReadOnlyDictionary<int, ProcessInfo> byPid)
     {
         var current = p;
         for (var depth = 0; depth < 32; depth++)
         {
-            if (!byPid.TryGetValue(current.ParentPid, out var parent) || parent.Created > current.Created) return false;
-            if (parent.Pid == ancestorPid) return true;
+            if (!byPid.TryGetValue(current.ParentPid, out var parent) || parent.Created > current.Created) yield break;
+            yield return parent;
             current = parent;
         }
-        return false;
     }
 
     public static IReadOnlyList<HelperGroup> GroupHelpers(IEnumerable<ProcessInfo> helpers)
