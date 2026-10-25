@@ -112,6 +112,20 @@ public sealed class PriorityTests : IDisposable
         Assert.Equal(ProcessPriorityClass.Normal, CpuPriority());
     }
 
+    [Fact]
+    public void A_trimmed_process_is_left_alone_until_it_outgrows_its_old_size()
+    {
+        (Report, Plan) Trim(long mb)
+        {
+            var p = Info() with { WorkingSetBytes = mb << 20 };
+            return (new Report(new Snapshot([p, Terminal], 0, 0), [], []), new Plan([], [p], "test"));
+        }
+        Assert.Equal(1, Guard.Execute(Trim(100)).Trimmed);
+        Assert.Equal(0, Guard.Execute(Trim(110)).Trimmed); // came back, but no bigger than before: it is using those pages
+        Assert.Equal(1, Guard.Execute(Trim(130)).Trimmed); // a quarter more than before: growing, trim again
+        Assert.Equal(1, Guard.Execute(Trim(130), force: true).Trimmed); // "Free RAM now" ignores the cooldown
+    }
+
     public void Dispose()
     {
         Guard.RestorePriorities();

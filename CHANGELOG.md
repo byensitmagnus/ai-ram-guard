@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 (2026-10-25)
+
+**Fix**
+- Memory is no longer trimmed again every round. The 15-minute pause after a trim compared against the size right after it, which is near zero, so any regrowth ended the pause. Now a process is trimmed again only when it grows a quarter past its size before the trim. Seen on a 32 GB gaming PC: in game mode about 215 AI processes were trimmed every 2 minutes.
+
 ## 1.2.0 (2026-10-25)
 
 **New**

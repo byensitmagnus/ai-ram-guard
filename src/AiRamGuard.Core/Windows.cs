@@ -8,7 +8,7 @@ public static class Paths
 {
     public static string ConfigDir { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AiRamGuard");
     public static string DataDir { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AiRamGuard");
-    public static string LogFile { get; } = Path.Combine(DataDir, "guard.log");
+    public static string LogFile { get; internal set; } = Path.Combine(DataDir, "guard.log"); // tests point it elsewhere
     public static string HistoryFile { get; } = Path.Combine(DataDir, "history.json");
     public static string StatsFile { get; } = Path.Combine(DataDir, "stats.json");
     public static string LineageFile { get; } = Path.Combine(DataDir, "lineage.json");
@@ -107,7 +107,7 @@ public static class Guard
 
     /// <summary>
     /// Trimmed pages that come straight back are being used: trimming them again every round only costs CPU and disk.
-    /// Skip a process trimmed in the last 15 minutes unless it grew by a quarter since.
+    /// Skip a process trimmed in the last 15 minutes unless it grew a quarter past its size before that trim.
     /// </summary>
     static bool CoolingDown(ProcessInfo p, DateTime now) =>
         Trimmed.TryGetValue($"{p.Pid}:{p.Created.Ticks}", out var t) && now - t.At < TrimCooldown && p.WorkingSetBytes < t.WorkingSet * 5 / 4;
@@ -136,7 +136,7 @@ public static class Guard
             if (after < 0) continue;
             trimmed++;
             freed += Math.Max(0, p.WorkingSetBytes - after);
-            Trimmed[$"{p.Pid}:{p.Created.Ticks}"] = (now, after);
+            Trimmed[$"{p.Pid}:{p.Created.Ticks}"] = (now, p.WorkingSetBytes); // the size before: right after a trim it is near zero, and any regrowth would pass "a quarter more"
         }
         if (prioritize) Prioritize(dryRun ? [] : plan.Lower, !dryRun && plan.LowerCpu, report.Snapshot.Processes.ToDictionary(p => p.Pid));
 
