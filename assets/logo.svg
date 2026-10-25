@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="AI RAM Guard logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d21be0"/>
+      <stop offset="0.55" stop-color="#ba01c4"/>
+      <stop offset="1" stop-color="#5b0aa8"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+  <!-- RAM gauge: track + the part we guard -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="44"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#ffffff" stroke-width="44" stroke-linecap="round"
+          stroke-dasharray="660 943" transform="rotate(-90 256 256)"/>
+  <!-- memory chip -->
+  <rect x="196" y="206" width="120" height="100" rx="18" fill="#ffffff"/>
+  <g fill="#ffffff">
+    <rect x="212" y="306" width="14" height="22" rx="4"/><rect x="238" y="306" width="14" height="22" rx="4"/>
+    <rect x="264" y="306" width="14" height="22" rx="4"/><rect x="290" y="306" width="14" height="22" rx="4"/>
+    <rect x="212" y="184" width="14" height="22" rx="4"/><rect x="238" y="184" width="14" height="22" rx="4"/>
+    <rect x="264" y="184" width="14" height="22" rx="4"/><rect x="290" y="184" width="14" height="22" rx="4"/>
+  </g>
+  <text x="256" y="272" text-anchor="middle" font-family="Segoe UI, Inter, Arial, sans-serif" font-weight="800" font-size="46" fill="#ba01c4">AI</text>
+</svg>

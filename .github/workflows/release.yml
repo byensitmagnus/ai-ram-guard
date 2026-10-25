@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet test -c Release
+      - name: Publish self-contained
+        run: |
+          dotnet publish src/AiRamGuard.Tray -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/sc
+          dotnet publish src/AiRamGuard.Cli  -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o out/sc
+      - name: Publish framework-dependent
+        run: |
+          dotnet publish src/AiRamGuard.Tray -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true -o out/fd
+          dotnet publish src/AiRamGuard.Cli  -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true -o out/fd
+      - name: Zip
+        shell: pwsh
+        run: |
+          Compress-Archive out/sc/*.exe AiRamGuard-win-x64.zip
+          Compress-Archive out/fd/*.exe AiRamGuard-win-x64-framework.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            AiRamGuard-win-x64.zip
+            AiRamGuard-win-x64-framework.zip
+          generate_release_notes: true

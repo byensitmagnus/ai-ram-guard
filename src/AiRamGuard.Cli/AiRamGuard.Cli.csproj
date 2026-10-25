@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>airg</AssemblyName>
+    <RootNamespace>AiRamGuard.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AiRamGuard.Core\AiRamGuard.Core.csproj" />
+  </ItemGroup>
+</Project>

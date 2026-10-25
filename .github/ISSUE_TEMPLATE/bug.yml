@@ -1,0 +1,22 @@
+name: Bug report
+description: Something went wrong, or a process was touched that shouldn't be
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant lines from %LOCALAPPDATA%\AiRamGuard\guard.log
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: AI RAM Guard version and Windows version
+      placeholder: 0.1.0, Windows 11 24H2
+    validations:
+      required: true

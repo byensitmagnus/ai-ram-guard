@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Authors>Magnus Steinmeier Olsen</Authors>
+    <Company>Byens IT</Company>
+    <Product>AI RAM Guard</Product>
+    <Copyright>© 2026 Magnus Steinmeier Olsen / Byens IT</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/byensitmagnus/ai-ram-guard</RepositoryUrl>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

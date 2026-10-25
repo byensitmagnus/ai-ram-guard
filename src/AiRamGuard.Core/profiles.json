@@ -1,0 +1,68 @@
+{
+  "$comment": "AI apps AI RAM Guard knows. Add yours with a pull request: see docs/adding-an-agent.md",
+  "helperPatterns": [
+    "\\bmcp\\b",
+    "mcp-server",
+    "@modelcontextprotocol/",
+    "npx-cli\\.js",
+    "\\buvx?\\b.*\\bmcp",
+    "desktop-commander",
+    "server\\.mjs"
+  ],
+  "agents": [
+    {
+      "id": "claude",
+      "name": "Claude (Desktop / Code)",
+      "processNames": ["claude"],
+      "helperPatterns": []
+    },
+    {
+      "id": "codex",
+      "name": "OpenAI Codex / ChatGPT",
+      "processNames": ["codex", "ChatGPT"],
+      "helperPatterns": ["cua-repl", "codex-app-tools", "node_repl"]
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "processNames": ["Cursor"],
+      "helperPatterns": []
+    },
+    {
+      "id": "windsurf",
+      "name": "Windsurf",
+      "processNames": ["Windsurf"],
+      "helperPatterns": []
+    },
+    {
+      "id": "vscode",
+      "name": "VS Code (Copilot / agents)",
+      "processNames": ["Code", "Code - Insiders"],
+      "helperPatterns": []
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini CLI",
+      "processNames": [],
+      "helperPatterns": ["@google/gemini-cli", "gemini-cli"]
+    },
+    {
+      "id": "grok",
+      "name": "Grok",
+      "processNames": ["Grok", "Grok Bot"],
+      "helperPatterns": []
+    },
+    {
+      "id": "lmstudio",
+      "name": "LM Studio",
+      "processNames": ["LM Studio"],
+      "helperPatterns": []
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama",
+      "processNames": ["ollama", "ollama app"],
+      "helperPatterns": []
+    }
+  ]
+}
