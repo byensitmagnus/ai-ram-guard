@@ -14,6 +14,7 @@ Usage:
   airg move <id> <drive|folder>
                               Move a cache to another drive, e.g. airg move npm D:
   airg undo <id>              Move it back and restore the variable as it was
+  airg --version              Print the version
 
 https://github.com/byensitmagnus/ai-ram-guard
 """;
@@ -91,6 +92,10 @@ switch (cmd)
         var mr = cmd == "move" ? Mover.Move(spot, target) : Mover.Undo(spot);
         Console.WriteLine(mr.Message);
         return mr.Ok ? 0 : 1;
+
+    case "--version" or "-v" or "version":
+        Console.WriteLine(typeof(Guard).Assembly.GetName().Version?.ToString(3));
+        return 0;
 
     default:
         Console.WriteLine(Help);

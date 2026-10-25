@@ -15,6 +15,7 @@
 | `airg move <id> D:` | Move a cache to `D:\AiCache\<id>` and point its tool there (user environment variable) |
 | `airg move <id> <folder>` | Same, to an empty or new folder of your choice |
 | `airg undo <id>` | Move it back and restore the variable exactly as it was (or remove it) |
+| `airg --version` | Print the version |
 
 Ids for `move`: `npm`, `uv`, `pip`, `nuget`, `playwright`, `huggingface`, `ollama`, `temp`. `claude` and `codex` are listed by `disk` but not moved: they hold sessions and settings. Neither is a cache with links in it (Hugging Face makes them in Developer Mode): only an admin can recreate links, so it would arrive half-moved. Programs you start after a move use the new folder; restart the ones that were open.
 

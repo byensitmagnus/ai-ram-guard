@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+**New**
+- `airg --version` (also `-v`, `version`) prints the version. It used to print the help and exit 1.
+
 ## 1.2.2 (2026-10-25)
 
 **Fix**
