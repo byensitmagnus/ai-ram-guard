@@ -29,12 +29,41 @@ abstract class Painted : Control
     protected override void OnMouseEnter(EventArgs e) { Hover = true; Invalidate(); base.OnMouseEnter(e); }
     protected override void OnMouseLeave(EventArgs e) { Hover = false; Invalidate(); base.OnMouseLeave(e); }
 
+    /// <summary>GDI text (TextRenderer): ClearType, and stays sharp when Windows scales the app for high DPI.</summary>
     protected static void DrawText(Graphics g, string s, Font f, Color c, RectangleF r, StringAlignment h = StringAlignment.Near, StringAlignment v = StringAlignment.Center)
     {
-        using var b = new SolidBrush(c);
-        using var fmt = new StringFormat { Alignment = h, LineAlignment = v, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
-        g.DrawString(s, f, b, r, fmt);
+        var flags = TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding
+            | h switch { StringAlignment.Center => TextFormatFlags.HorizontalCenter, StringAlignment.Far => TextFormatFlags.Right, _ => TextFormatFlags.Left }
+            | v switch { StringAlignment.Near => TextFormatFlags.Top, StringAlignment.Far => TextFormatFlags.Bottom, _ => TextFormatFlags.VerticalCenter };
+        TextRenderer.DrawText(g, s, f, Rectangle.Round(r), c, flags);
     }
+
+    protected static int TextWidth(string s, Font f) => TextRenderer.MeasureText(s, f, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+
+    /// <summary>Small rounded label: "×48", "saves ~1.0 GB".</summary>
+    protected static float DrawChip(Graphics g, string s, Font f, Color fg, Color bg, float x, float y, float h = 20)
+    {
+        var w = TextWidth(s, f) + 16;
+        var r = new RectangleF(x, y, w, h);
+        using (var path = Theme.Rounded(r, h / 2))
+        using (var b = new SolidBrush(bg)) g.FillPath(b, path);
+        DrawText(g, s, f, fg, r, StringAlignment.Center);
+        return w;
+    }
+}
+
+/// <summary>A chip as a control, for pages built from controls.</summary>
+sealed class Pill : Painted
+{
+    readonly Color _fg, _bg;
+    public Pill(string text, Color fg, Color bg)
+    {
+        base.Text = text;
+        (_fg, _bg) = (fg, bg);
+        Size = new Size(TextWidth(text, Theme.Current.Bold) + 20, 26);
+    }
+
+    protected override void Draw(Graphics g) => DrawChip(g, base.Text, T.Bold, _fg, _bg, 0, 0, Height - 1);
 }
 
 /// <summary>A rounded surface that holds other controls.</summary>
@@ -82,9 +111,15 @@ sealed class RingGauge : Painted
         using (var aiPen = new Pen(ai, thick) { StartCap = LineCap.Round, EndCap = LineCap.Round })
             if (aiShown > 0) g.DrawArc(aiPen, r, -90, 360f * aiShown / _total);
 
-        var center = new RectangleF(r.X, r.Y + r.Height * 0.28f, r.Width, r.Height * 0.3f);
-        DrawText(g, Theme.Size(_free), T.Big, T.Text, center, StringAlignment.Center);
-        DrawText(g, "free", T.Body, T.Muted, new RectangleF(r.X, center.Bottom, r.Width, 22), StringAlignment.Center);
+        // The story is what AI takes, so that is the hero number; free RAM is the first tile next to it.
+        var center = new RectangleF(r.X, r.Y + r.Height * 0.26f, r.Width, r.Height * 0.3f);
+        if (_total <= 1)
+        {
+            DrawText(g, "Scanning…", T.Body, T.Muted, r, StringAlignment.Center);
+            return;
+        }
+        DrawText(g, Theme.Size(_ai), T.Big, T.BrandText, center, StringAlignment.Center);
+        DrawText(g, $"AI apps · {(double)_ai / _total:P0} of RAM", T.Small, T.Muted, new RectangleF(r.X, center.Bottom, r.Width, 22), StringAlignment.Center);
     }
 }
 
@@ -107,24 +142,32 @@ sealed class HistoryChart : Painted
         var oldest = _samples.Count > 0 ? now - _samples[0].Time : TimeSpan.Zero;
         var hours = new[] { 1, 3, 6, 12, 24 }.First(h => h == 24 || oldest <= TimeSpan.FromHours(h));
         var window = TimeSpan.FromHours(hours);
-        DrawText(g, hours == 1 ? "Last hour" : $"Last {hours} hours", new Font("Segoe UI Semibold", 12f), T.Text, new RectangleF(4, 0, 300, 30));
+        DrawText(g, hours == 1 ? "Last hour" : $"Last {hours} hours", T.Section, T.Text, new RectangleF(4, 0, 300, 30));
         Legend(g, Width - 8, 6, ("AI apps", Theme.Brand), ("all RAM in use", T.Other));
         using var grid = new Pen(T.Border) { DashStyle = DashStyle.Dot };
-        var totalMB = _samples.Count > 0 ? _samples.Max(s => s.TotalMB) : 32768;
-        for (var i = 0; i <= 4; i++)
+
+        // Round gridlines (0 / 8 / 16 / 24 / 32 GB), not quarters of 31.8.
+        var installedGB = Math.Max(1, (int)Math.Ceiling((_samples.Count > 0 ? _samples.Max(s => s.TotalMB) : 32768) / 1024.0));
+        var stepGB = installedGB <= 8 ? 2 : installedGB <= 16 ? 4 : installedGB <= 32 ? 8 : installedGB <= 64 ? 16 : 32;
+        var topGB = (installedGB + stepGB - 1) / stepGB * stepGB;
+        var totalMB = topGB * 1024;
+        for (var gb = 0; gb <= topGB; gb += stepGB)
         {
-            var y = plot.Bottom - plot.Height * i / 4;
+            var y = plot.Bottom - plot.Height * gb / topGB;
             g.DrawLine(grid, plot.Left, y, plot.Right, y);
-            DrawText(g, $"{totalMB * i / 4 / 1024} GB", T.Small, T.Muted, new RectangleF(0, y - 9, 40, 18), StringAlignment.Far);
+            DrawText(g, $"{gb} GB", T.Small, T.Muted, new RectangleF(0, y - 9, 38, 18), StringAlignment.Far);
         }
 
+        // Clock times on round boundaries, like Task Manager and every other monitor.
         var start = now - window;
-        for (var i = 0; i <= 4; i++)
+        var tick = TimeSpan.FromMinutes(hours switch { 1 => 15, 3 => 30, 6 => 60, 12 => 120, _ => 240 });
+        var nowLabel = new RectangleF(plot.Right - 60, plot.Bottom + 6, 62, 18);
+        DrawText(g, "now", T.Small, T.Muted, nowLabel, StringAlignment.Far);
+        for (var t = new DateTime(start.Ticks / tick.Ticks * tick.Ticks + tick.Ticks); t < now; t += tick)
         {
-            var x = plot.Left + plot.Width * i / 4;
-            var ago = window * (4 - i) / 4;
-            var text = i == 4 ? "now" : ago.TotalHours >= 1 && ago.TotalHours % 1 == 0 ? $"-{ago.TotalHours:0}h" : $"-{ago.TotalMinutes:0} min";
-            DrawText(g, text, T.Small, T.Muted, i == 4 ? new RectangleF(x - 60, plot.Bottom + 6, 62, 18) : new RectangleF(x - 30, plot.Bottom + 6, 60, 18), i == 4 ? StringAlignment.Far : StringAlignment.Center);
+            var x = plot.Left + plot.Width * (float)((t - start).TotalSeconds / window.TotalSeconds);
+            if (x + 24 > nowLabel.Left + 30) continue; // would collide with "now"
+            DrawText(g, $"{t:HH:mm}", T.Small, T.Muted, new RectangleF(x - 30, plot.Bottom + 6, 60, 18), StringAlignment.Center);
         }
 
         if (_samples.Count < 2)
@@ -149,7 +192,7 @@ sealed class HistoryChart : Painted
             using var line = new Pen(T.Muted);
             g.DrawLine(line, x, plot.Top, x, plot.Bottom);
             var label = $"{nearest.Time:HH:mm}  ·  used {(nearest.TotalMB - nearest.FreeMB) / 1024.0:0.0} GB  ·  AI {nearest.AiMB / 1024.0:0.0} GB";
-            var w = g.MeasureString(label, T.Small).Width + 16;
+            var w = TextWidth(label, T.Small) + 20;
             var box = new RectangleF(Math.Min(x + 8, plot.Right - w), plot.Top, w, 24);
             using var bg = new SolidBrush(T.Surface2);
             using var path = Theme.Rounded(box, 6);
@@ -164,7 +207,7 @@ sealed class HistoryChart : Painted
         var x = right;
         foreach (var (label, color) in Enumerable.Reverse(items))
         {
-            var w = g.MeasureString(label, T.Small).Width;
+            var w = TextWidth(label, T.Small);
             x -= w;
             DrawText(g, label, T.Small, T.Muted, new RectangleF(x, y, w + 4, 18));
             x -= 16;
@@ -191,15 +234,18 @@ sealed class HistoryChart : Painted
 /// <summary>One row per AI app: icon, name, MCP servers, a bar and its RAM.</summary>
 sealed class AppList : Painted
 {
-    const int RowHeight = 62;
+    const int RowHeight = 68;
     IReadOnlyList<AgentUsage> _agents = [];
     IReadOnlyDictionary<string, int> _caps = new Dictionary<string, int>();
     static readonly Dictionary<string, Bitmap?> Icons = [];
 
-    public void Set(IReadOnlyList<AgentUsage> agents, IReadOnlyDictionary<string, int> caps)
+    long _totalRam = 1;
+
+    public void Set(IReadOnlyList<AgentUsage> agents, IReadOnlyDictionary<string, int> caps, long totalRam)
     {
         _agents = agents;
         _caps = caps;
+        _totalRam = Math.Max(1, totalRam);
         Height = Math.Max(1, agents.Count) * RowHeight;
         Invalidate();
     }
@@ -211,7 +257,6 @@ sealed class AppList : Painted
             DrawText(g, "No AI apps running right now.", T.Body, T.Muted, ClientRectangle, StringAlignment.Center);
             return;
         }
-        var max = _agents.Max(a => a.Bytes);
         for (var i = 0; i < _agents.Count; i++)
         {
             var a = _agents[i];
@@ -219,7 +264,7 @@ sealed class AppList : Painted
             if (i > 0) using (var sep = new Pen(T.Border)) g.DrawLine(sep, 0, y, Width, y);
 
             var icon = IconFor(a);
-            var iconRect = new Rectangle(0, y + 15, 32, 32);
+            var iconRect = new Rectangle(0, y + 18, 32, 32);
             if (icon is not null) g.DrawImage(icon, iconRect);
             else
             {
@@ -231,16 +276,33 @@ sealed class AppList : Painted
             var textX = 46;
             var right = Width - 96;
             DrawText(g, a.Profile.Name, T.Bold, T.Text, new RectangleF(textX, y + 8, right - textX, 22));
-            var helpers = string.Join("  ·  ", a.Helpers.Take(3).Select(h => h.Count > 1 ? $"{h.Key} ×{h.Count}" : h.Key));
-            var sub = $"{a.Processes.Count} processes" + (helpers.Length > 0 ? $"  ·  {helpers}" : "");
-            DrawText(g, sub, T.Small, T.Muted, new RectangleF(textX, y + 28, right - textX, 18));
+            // The insight is the duplicates: "desktop-commander ×48" as an orange chip, not muted small print.
+            var procs = $"{a.Processes.Count} processes";
+            DrawText(g, procs, T.Small, T.Muted, new RectangleF(textX, y + 28, 120, 18));
+            var chipX = textX + TextWidth(procs, T.Small) + 10f;
+            foreach (var h in a.Helpers.Take(3))
+            {
+                var dup = h.Count >= 3;
+                var label = $"{h.Key.Split('/')[^1]}{(h.Count > 1 ? $" ×{h.Count}" : "")}";
+                if (chipX + TextWidth(label, T.Small) + 16 > right) break;
+                chipX += DrawChip(g, label, T.Small, dup ? T.Warn : T.Muted, dup ? Color.FromArgb(T.Dark ? 45 : 35, T.Warn) : T.Surface2, chipX, y + 27, 20) + 6;
+            }
 
-            var bar = new RectangleF(textX, y + 48, right - textX, 5);
-            using (var track = new SolidBrush(T.Surface2)) g.FillRectangle(track, bar);
-            var fill = bar with { Width = Math.Max(3, bar.Width * a.Bytes / Math.Max(1, max)) };
-            using (var b = new LinearGradientBrush(bar, Theme.Brand, Theme.BrandDeep, 0f)) g.FillRectangle(b, fill);
+            // Share of installed RAM, so one app alone isn't always a full bar. A tick marks its cap.
+            var bar = new RectangleF(textX, y + 52, right - textX, 5);
+            using (var track = Theme.Rounded(bar, 2.5f))
+            using (var tb = new SolidBrush(T.Surface2)) g.FillPath(tb, track);
+            var fill = bar with { Width = Math.Max(5, bar.Width * a.Bytes / _totalRam) };
+            using (var fp = Theme.Rounded(fill, 2.5f))
+            using (var b = new LinearGradientBrush(bar, Theme.Brand, Theme.BrandDeep, 0f)) g.FillPath(b, fp);
 
             var over = _caps.TryGetValue(a.Profile.Id, out var cap) && a.Bytes / 1048576 > cap;
+            if (cap > 0)
+            {
+                var tx = bar.X + bar.Width * Math.Min(1f, ((long)cap << 20) / (float)_totalRam);
+                using var tp = new Pen(over ? T.Warn : T.Text, 2);
+                g.DrawLine(tp, tx, bar.Y - 3, tx, bar.Bottom + 3);
+            }
             DrawText(g, Theme.Size(a.Bytes), T.Bold, over ? T.Warn : T.Text, new RectangleF(right, y + 8, 96, 22), StringAlignment.Far);
             if (cap > 0) DrawText(g, $"cap {Theme.Size((long)cap << 20)}", T.Small, over ? T.Warn : T.Muted, new RectangleF(right, y + 28, 96, 18), StringAlignment.Far);
         }
@@ -273,11 +335,14 @@ sealed class FlatButton : Painted
         Height = 38;
         Width = TextRenderer.MeasureText(text, Theme.Current.Bold).Width + (glyph.Length > 0 ? 58 : 36);
         TabStop = true;
+        AccessibleRole = AccessibleRole.PushButton;
+        AccessibleName = text;
     }
 
     protected override void OnTextChanged(EventArgs e)
     {
         Width = TextRenderer.MeasureText(base.Text, Theme.Current.Bold).Width + (Glyph.Length > 0 ? 58 : 36);
+        AccessibleName = base.Text;
         base.OnTextChanged(e);
     }
 
@@ -326,12 +391,32 @@ sealed class ToggleSwitch : Painted
     public bool Checked
     {
         get => _checked;
-        set { if (_checked == value) return; _checked = value; Invalidate(); CheckedChanged?.Invoke(this, EventArgs.Empty); }
+        set
+        {
+            if (_checked == value) return;
+            _checked = value;
+            AccessibleDescription = value ? "On" : "Off";
+            if (IsHandleCreated && Visible) _anim.Start(); else _knob = value ? 1 : 0;
+            Invalidate();
+            CheckedChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
+
+    // Knob position 0..1, eased over ~150 ms so the switch slides instead of jumping.
+    float _knob;
+    readonly System.Windows.Forms.Timer _anim = new() { Interval = 15 };
 
     public ToggleSwitch(string text, string hint = "")
     {
+        _anim.Tick += (_, _) =>
+        {
+            var target = _checked ? 1f : 0f;
+            _knob += (target - _knob) * 0.35f;
+            if (Math.Abs(target - _knob) < 0.02f) { _knob = target; _anim.Stop(); }
+            Invalidate();
+        };
         base.Text = text;
+        AccessibleName = text;
         Hint = hint;
         Height = hint.Length > 0 ? 52 : 34;
         Cursor = Cursors.Hand;
@@ -339,21 +424,28 @@ sealed class ToggleSwitch : Painted
         AccessibleRole = AccessibleRole.CheckButton;
     }
 
+    static Color Blend(Color a, Color b, float t) =>
+        Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+
+    protected override void Dispose(bool disposing) { if (disposing) _anim.Dispose(); base.Dispose(disposing); }
+
     protected override void OnClick(EventArgs e) { Checked = !Checked; base.OnClick(e); }
     protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space) Checked = !Checked; base.OnKeyDown(e); }
 
     protected override void Draw(Graphics g)
     {
         var sw = new RectangleF(Width - 46, 6, 40, 22);
+        var fill = Blend(T.Surface2, Theme.Brand, _knob);
         using (var path = Theme.Rounded(sw, 11))
-        using (var b = new SolidBrush(_checked ? Theme.Brand : T.Surface2))
-        using (var p = new Pen(_checked ? Theme.Brand : T.Muted))
+        using (var b = new SolidBrush(fill))
+        using (var p = new Pen(Blend(T.Muted, Theme.Brand, _knob)))
         {
             g.FillPath(b, path);
             g.DrawPath(p, path);
         }
-        var knob = _checked ? new RectangleF(sw.Right - 19, sw.Y + 3, 16, 16) : new RectangleF(sw.X + 3, sw.Y + 3, 16, 16);
-        using (var k = new SolidBrush(_checked ? Color.White : T.Muted)) g.FillEllipse(k, knob);
+        var size = 14 + 2 * _knob;
+        var knob = new RectangleF(sw.X + 3 + (sw.Width - 6 - size) * _knob, sw.Y + (sw.Height - size) / 2, size, size);
+        using (var k = new SolidBrush(Blend(T.Muted, Color.White, _knob))) g.FillEllipse(k, knob);
         if (Focused) using (var f = new Pen(Theme.Brand)) g.DrawRectangle(f, 0, 0, Width - 1, Height - 1);
 
         DrawText(g, base.Text, T.Body, T.Text, new RectangleF(0, 4, Width - 60, 26));
@@ -374,10 +466,10 @@ sealed class Stepper : Painted
     public int Value
     {
         get => _value;
-        set { var v = Math.Clamp(value, Min, Max); if (v == _value) return; _value = v; Invalidate(); ValueChanged?.Invoke(this, EventArgs.Empty); }
+        set { var v = Math.Clamp(value, Min, Max); if (v == _value) return; _value = v; AccessibleDescription = Format(v); Invalidate(); ValueChanged?.Invoke(this, EventArgs.Empty); }
     }
 
-    public Stepper() { Size = new Size(150, 34); Cursor = Cursors.Hand; TabStop = true; }
+    public Stepper() { Size = new Size(150, 34); Cursor = Cursors.Hand; TabStop = true; AccessibleRole = AccessibleRole.SpinButton; }
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
@@ -429,5 +521,51 @@ sealed class StatTile : Painted
         DrawText(g, _label, T.Small, T.Muted, new RectangleF(0, 0, Width, 20));
         DrawText(g, _value, T.Title, _accent ?? T.Text, new RectangleF(0, 20, Width, 34));
         DrawText(g, _hint, T.Small, T.Muted, new RectangleF(0, 56, Width, 20));
+    }
+}
+
+
+/// <summary>One entry on the Activity page, already in plain words.</summary>
+sealed record ActivityEntry(DateTime Time, string Glyph, Color Color, string Title, string Detail);
+
+/// <summary>The guard's log as a readable timeline: grouped by day, an icon per kind, newest first.</summary>
+sealed class ActivityList : Painted
+{
+    const int Row = 52, DayHeader = 40;
+    IReadOnlyList<ActivityEntry> _entries = [];
+
+    public void Set(IReadOnlyList<ActivityEntry> entries)
+    {
+        _entries = entries;
+        Height = Math.Max(60, entries.Count * Row + entries.Select(e => e.Time.Date).Distinct().Count() * DayHeader);
+        Invalidate();
+    }
+
+    protected override void Draw(Graphics g)
+    {
+        if (_entries.Count == 0)
+        {
+            DrawText(g, "Nothing yet. When AI RAM Guard closes a leftover or frees memory, it shows up here.", T.Body, T.Muted, ClientRectangle, StringAlignment.Center);
+            return;
+        }
+        var y = 0f;
+        DateTime? day = null;
+        foreach (var e in _entries)
+        {
+            if (day != e.Time.Date)
+            {
+                day = e.Time.Date;
+                var label = day == DateTime.Today ? "Today" : day == DateTime.Today.AddDays(-1) ? "Yesterday" : $"{day:dddd d MMMM}";
+                DrawText(g, label, T.Bold, T.Text, new RectangleF(0, y + 8, Width, 26));
+                y += DayHeader;
+            }
+            var circle = new RectangleF(0, y + 8, 34, 34);
+            using (var b = new SolidBrush(Color.FromArgb(T.Dark ? 40 : 28, e.Color))) g.FillEllipse(b, circle);
+            DrawText(g, e.Glyph, T.Icon, e.Color, circle, StringAlignment.Center);
+            DrawText(g, e.Title, T.Bold, T.Text, new RectangleF(48, y + 6, Width - 120, 22));
+            DrawText(g, e.Detail, T.Small, T.Muted, new RectangleF(48, y + 27, Width - 120, 18));
+            DrawText(g, $"{e.Time:HH:mm}", T.Small, T.Muted, new RectangleF(Width - 70, y + 6, 70, 22), StringAlignment.Far);
+            y += Row;
+        }
     }
 }

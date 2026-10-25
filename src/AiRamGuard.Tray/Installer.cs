@@ -108,7 +108,7 @@ sealed class WelcomeForm : Form
         Font = t.Body;
         HandleCreated += (_, _) => t.ApplyTitleBar(this);
 
-        var logo = new PictureBox { Image = Icon.ExtractAssociatedIcon(Environment.ProcessPath!)?.ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(64, 64), Location = new Point(36, 36) };
+        var logo = new PictureBox { Image = MainForm.Logo(64), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(64, 64), Location = new Point(36, 36) };
         var title = new Label { Text = "AI RAM Guard", Font = new Font("Segoe UI Semibold", 20f), ForeColor = t.Text, AutoSize = true, Location = new Point(116, 36) };
         var sub = new Label { Text = $"Version {MainForm.Version} · by Byens IT", ForeColor = t.Muted, AutoSize = true, Location = new Point(120, 76) };
         var body = new Label

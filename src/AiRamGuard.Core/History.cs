@@ -52,7 +52,7 @@ public sealed class Stats
     {
         Rounds++;
         OrphansClosed += r.Killed;
-        FreedMB += Math.Max(0, (r.FreeAfterBytes - r.FreeBeforeBytes) / (1024 * 1024));
+        FreedMB += Math.Max(0, r.FreedBytes / (1024 * 1024));
     }
 
     public void Save(string path)

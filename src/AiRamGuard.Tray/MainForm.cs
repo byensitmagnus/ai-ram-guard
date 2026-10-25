@@ -73,6 +73,19 @@ sealed class MainForm : Form
     }
 
     public static void Open(string target) => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+
+    /// <summary>The app icon at a real size: ExtractAssociatedIcon only gives 32 px, which blurs when zoomed.</summary>
+    public static Bitmap? Logo(int size) => Icon.ExtractIcon(Environment.ProcessPath!, 0, size)?.ToBitmap();
+
+    /// <summary>Ctrl+1..4 pages, F5 check again, Esc close.</summary>
+    protected override bool ProcessCmdKey(ref Message msg, Keys keys)
+    {
+        string[] order = ["Overview", "Recommendations", "Activity", "Settings"];
+        if (keys >= (Keys.Control | Keys.D1) && keys <= (Keys.Control | Keys.D4)) { Navigate(order[(int)(keys & Keys.KeyCode) - (int)Keys.D1]); return true; }
+        if (keys == Keys.F5) { _state.RunNow(false); return true; }
+        if (keys == Keys.Escape) { Close(); return true; }
+        return base.ProcessCmdKey(ref msg, keys);
+    }
 }
 
 /// <summary>A scrollable page with a header and a vertical stack of cards.</summary>
@@ -90,7 +103,7 @@ abstract class Page : Panel
         AutoScroll = true;
         BackColor = t.Bg;
         Heading.Text = title;
-        Heading.Font = new Font("Segoe UI Semibold", 20f);
+        Heading.Font = t.Heading;
         Heading.ForeColor = t.Text;
         Sub.Text = subtitle;
         Sub.ForeColor = t.Muted;
@@ -116,7 +129,7 @@ abstract class Page : Panel
 
     protected static Label CardTitle(string text) => new()
     {
-        Text = text, AutoSize = true, Font = new Font("Segoe UI Semibold", 12f), ForeColor = Theme.Current.Text,
+        Text = text, AutoSize = true, Font = Theme.Current.Section, ForeColor = Theme.Current.Text,
         BackColor = Theme.Current.Surface, Location = new Point(18, 14),
     };
 
@@ -136,6 +149,8 @@ sealed class OverviewPage : Page
     readonly Card _top = NewCard(272), _hist = NewCard(300), _list = NewCard(120);
     readonly FlatButton _clean = new("Free RAM now", primary: true, glyph: ""), _pause = new("Pause 1 h", glyph: "");
     readonly Label _status = new() { AutoSize = true };
+    readonly Label _listTitle = CardTitle("AI apps");
+    readonly ToolTip _tips = new();
 
     public OverviewPage(AppState s, Action<string> navigate) : base("Overview", "How much RAM your AI tools use right now.")
     {
@@ -160,8 +175,11 @@ sealed class OverviewPage : Page
         _hist.Controls.Add(_chart);
         _hist.Resize += (_, _) => _chart.Size = new Size(_hist.Width - 28, _hist.Height - 32);
 
-        _list.Controls.Add(CardTitle("AI apps"));
-        var more = new LinkLabel { Text = "See how to fix the waste →", AutoSize = true, BackColor = t.Surface, LinkColor = Theme.Brand, ActiveLinkColor = Theme.Brand };
+        _list.Controls.Add(_listTitle);
+        _tips.SetToolTip(_clean, "Close leftovers and free idle AI memory now, whatever the limit. Also in the tray menu.");
+        _tips.SetToolTip(_pause, "Stop automatic rounds for an hour. \"Free RAM now\" still works.");
+        _tips.SetToolTip(_ring, "Brand colour: AI apps. Grey: everything else in use. Empty: free RAM.");
+        var more = new LinkLabel { Text = "See how to fix the waste →", AutoSize = true, BackColor = t.Surface, LinkColor = t.BrandText, ActiveLinkColor = t.BrandText, LinkBehavior = LinkBehavior.HoverUnderline };
         more.LinkClicked += (_, _) => navigate("Recommendations");
         _list.Controls.Add(more);
         _apps.BackColor = t.Surface;
@@ -199,12 +217,15 @@ sealed class OverviewPage : Page
         var snap = r.Snapshot;
         var used = snap.TotalRamBytes - snap.FreeRamBytes;
         _ring.Set(snap.TotalRamBytes, r.AiBytes, snap.FreeRamBytes);
-        _ai.Set("AI apps use", Theme.Size(r.AiBytes), $"{r.Agents.Sum(a => a.Processes.Count)} processes in {r.Agents.Count} apps", Theme.Brand);
-        _other.Set("Everything else", Theme.Size(Math.Max(0, used - r.AiBytes)), $"of {Theme.Size(snap.TotalRamBytes)} installed");
+        var lowMB = s.GameActive && s.Settings.Guard.GameMode ? s.Settings.Guard.GameModeMinFreeMB : s.Settings.Guard.MinFreeMB;
+        _ai.Set("Free RAM", Theme.Size(snap.FreeRamBytes), $"of {Theme.Size(snap.TotalRamBytes)} installed · limit {lowMB / 1024} GB",
+            snap.FreeRamBytes >> 20 < lowMB ? t.Warn : t.Good);
+        _other.Set("Everything else", Theme.Size(Math.Max(0, used - r.AiBytes)), "Windows, games, browsers …");
+        _listTitle.Text = $"AI apps · {r.Agents.Sum(a => a.Processes.Count)} processes";
         _freed.Set("Freed by AI RAM Guard", Theme.Size(s.Stats.FreedMB << 20), $"since {s.Stats.Since:d MMM yyyy}");
         _orphans.Set("Leftovers right now", r.Orphans.Count == 0 ? "None" : $"{r.Orphans.Count} · {Theme.Size(r.Orphans.Sum(o => o.WorkingSetBytes))}",
             $"{s.Stats.OrphansClosed} closed so far", r.Orphans.Count > 0 ? t.Warn : t.Good);
-        _apps.Set(r.Agents, s.Settings.Guard.AgentCapsMB);
+        _apps.Set(r.Agents, s.Settings.Guard.AgentCapsMB, snap.TotalRamBytes);
         _list.Height = _apps.Height + 76;
         Layout2();
     }
@@ -257,16 +278,16 @@ sealed class AdvicePage : Page
             _ => ("", t.Muted),
         };
         var icon = new Label { Text = glyph, Font = new Font(Theme.IconFont, 16f), ForeColor = color, BackColor = t.Surface, AutoSize = true, Location = new Point(20, 20) };
-        var title = new Label { Text = a.Title, Font = t.Bold, ForeColor = t.Text, BackColor = t.Surface, AutoSize = true, Location = new Point(60, 18) };
-        var detail = Wrapping(a.Detail, t.Body, t.Muted, ContentWidth - 260);
-        detail.Location = new Point(60, 44);
+        var title = new Label { Text = a.Title, Font = t.Section, ForeColor = t.Text, BackColor = t.Surface, AutoSize = true, Location = new Point(60, 18) };
+        var detail = Wrapping(a.Detail, t.Body, t.Muted, Math.Min(640, ContentWidth - 260));
+        detail.Location = new Point(60, 48);
         card.Controls.AddRange([icon, title, detail]);
 
         if (a.SavingsBytes > 0)
         {
-            var save = new Label { Text = $"saves ~{Theme.Size(a.SavingsBytes)}", Font = t.Bold, ForeColor = t.Good, BackColor = t.Surface, AutoSize = true };
+            var save = new Pill($"saves ~{Theme.Size(a.SavingsBytes)}", t.Good, Color.FromArgb(t.Dark ? 40 : 30, t.Good)) { BackColor = t.Surface };
             card.Controls.Add(save);
-            card.Resize += (_, _) => save.Location = new Point(card.Width - save.Width - 22, 18);
+            card.Resize += (_, _) => save.Location = new Point(card.Width - save.Width - 20, 16);
         }
 
         FlatButton? action = a.Kind switch
@@ -294,40 +315,73 @@ sealed class AdvicePage : Page
 
 sealed class ActivityPage : Page
 {
-    readonly Card _card = NewCard(520);
-    readonly TextBox _log = new() { Multiline = true, ReadOnly = true, BorderStyle = BorderStyle.None, ScrollBars = ScrollBars.Vertical, WordWrap = false };
+    readonly Card _card = NewCard(200);
+    readonly ActivityList _list = new();
+    string _shown = "";
 
     public ActivityPage(AppState s) : base("Activity", "Everything AI RAM Guard did, newest first.")
     {
-        var t = Theme.Current;
-        _log.BackColor = t.Surface;
-        _log.ForeColor = t.Text;
-        t.ApplyScrollbars(_log);
-        _log.Font = new Font("Cascadia Mono", 9.5f);
-        if (_log.Font.Name != "Cascadia Mono") _log.Font = new Font("Consolas", 9.5f);
-        _log.Location = new Point(18, 18);
-        _card.Controls.Add(_log);
-        _card.Resize += (_, _) => _log.Size = new Size(_card.Width - 36, _card.Height - 36);
-        var open = new FlatButton("Open log file", glyph: "");
+        _list.BackColor = Theme.Current.Surface;
+        _list.Location = new Point(22, 14);
+        _card.Controls.Add(_list);
+        _card.Resize += (_, _) => _list.Width = _card.Width - 44;
+        var open = new FlatButton("Open log file", glyph: "\uE8E5");
         open.Click += (_, _) => { if (File.Exists(Paths.LogFile)) MainForm.Open(Paths.LogFile); };
         Actions.Controls.Add(open);
         Stack.Controls.Add(_card);
     }
-
-    protected override void Layout2() => _card.Height = Math.Max(300, ClientSize.Height - 120);
 
     public override void Reload(AppState s)
     {
         string[] lines;
         try { lines = File.Exists(Paths.LogFile) ? File.ReadAllLines(Paths.LogFile) : []; }
         catch (IOException) { return; } // the guard is writing right now; next refresh picks it up
-        var text = lines.Length == 0
-            ? "Nothing yet. When AI RAM Guard closes a leftover or frees memory, it shows up here."
-            : string.Join(Environment.NewLine, Enumerable.Reverse(lines).Take(400));
-        if (_log.Text != text) _log.Text = text;
+        var key = lines.Length == 0 ? "" : lines[^1] + lines.Length;
+        if (key == _shown && _shown.Length > 0) return;
+        _shown = key;
+        _list.Set(Enumerable.Reverse(lines).Select(Parse).OfType<ActivityEntry>().Take(150).ToList());
+        _card.Height = _list.Height + 28;
+    }
+
+    static readonly System.Text.RegularExpressions.Regex Round = new(
+        @"^(?<dry>\[dry-run\] )?(?<reason>.+): closed (?<k>\d+) orphans, trimmed (?<t>\d+) AI processes(?:, freed (?<f>\d+) MB)?, free (?<a>[\d.]+) -> (?<b>[\d.]+) GB$");
+    static readonly System.Text.RegularExpressions.Regex Orphan = new(@"^(?<verb>closed|could not close|would close) orphan (?<name>\S+) (?<pid>\d+) (?<mb>\d+) MB (?<key>.+)$");
+
+    /// <summary>"2026-10-25 12:20:21 installed 1.0.0 to …" → a timeline entry in plain words.</summary>
+    internal static ActivityEntry? Parse(string line)
+    {
+        if (line.Length < 20 || !DateTime.TryParseExact(line[..19], "yyyy-MM-dd HH:mm:ss", null, System.Globalization.DateTimeStyles.None, out var time)) return null;
+        var msg = line[20..];
+        var t = Theme.Current;
+        if (Round.Match(msg) is { Success: true } m)
+        {
+            var freed = m.Groups["f"].Success ? $"Freed {Theme.Size(long.Parse(m.Groups["f"].Value) << 20)}" : "Freed memory";
+            var parts = new List<string>();
+            if (m.Groups["t"].Value != "0") parts.Add($"{m.Groups["t"].Value} AI processes trimmed");
+            if (m.Groups["k"].Value != "0") parts.Add($"{m.Groups["k"].Value} leftovers closed");
+            parts.Add(m.Groups["reason"].Value);
+            return m.Groups["dry"].Success
+                ? new(time, "\uE945", t.Muted, "Would have freed memory (guard is off)", string.Join(" · ", parts))
+                : new(time, "\uE945", Theme.Brand, freed, string.Join(" · ", parts) + $" · free {m.Groups["a"].Value} → {m.Groups["b"].Value} GB");
+        }
+        if (Orphan.Match(msg) is { Success: true } o)
+        {
+            var detail = $"{o.Groups["name"].Value} · {o.Groups["mb"].Value} MB · its AI app was gone";
+            return o.Groups["verb"].Value switch
+            {
+                "closed" => new(time, "\uE73E", t.Good, $"Closed leftover {o.Groups["key"].Value}", detail),
+                "would close" => new(time, "\uE711", t.Muted, $"Would close leftover {o.Groups["key"].Value}", detail),
+                _ => new(time, "\uE7BA", t.Warn, $"Could not close {o.Groups["key"].Value}", detail + " · it may already have exited"),
+            };
+        }
+        if (msg.StartsWith("installed ")) return new(time, "\uE896", t.Good, $"Installed version {msg.Split(' ')[1]}", "Start menu, autostart and Settings → Apps");
+        if (msg.StartsWith("paused until ")) return new(time, "\uE769", t.Warn, $"Paused until {msg[13..]}", "Automatic rounds stopped");
+        if (msg == "resumed") return new(time, "\uE768", t.Good, "Resumed guarding", "");
+        if (msg.StartsWith("round failed: ") || msg.StartsWith("ignored ") || msg.StartsWith("install failed: "))
+            return new(time, "\uE7BA", t.Warn, "Something went wrong", msg);
+        return new(time, "\uE946", t.Muted, msg, "");
     }
 }
-
 sealed class SettingsPage : Page
 {
     readonly AppState _s;
@@ -489,7 +543,7 @@ sealed class Sidebar : Panel
         BackColor = t.Surface;
         DoubleBuffered = true;
 
-        var logo = new PictureBox { Image = Icon.ExtractAssociatedIcon(Environment.ProcessPath!)?.ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(36, 36), Location = new Point(22, 24), BackColor = t.Surface };
+        var logo = new PictureBox { Image = MainForm.Logo(64), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(36, 36), Location = new Point(22, 24), BackColor = t.Surface };
         var name = new Label { Text = "AI RAM Guard", Font = new Font("Segoe UI Semibold", 13f), ForeColor = t.Text, AutoSize = true, Location = new Point(66, 22), BackColor = t.Surface };
         var by = new Label { Text = "by Byens IT", Font = t.Small, ForeColor = t.Muted, AutoSize = true, Location = new Point(68, 44), BackColor = t.Surface };
         Controls.AddRange([logo, name, by]);
@@ -536,7 +590,26 @@ sealed class Sidebar : Panel
         public bool Selected { get => _selected; set { _selected = value; Invalidate(); } }
         public string Badge { get => _badge; set { if (_badge == value) return; _badge = value; Invalidate(); } }
 
-        public NavButton(string text, string glyph) { base.Text = text; _glyph = glyph; Height = 40; Cursor = Cursors.Hand; BackColor = Theme.Current.Surface; }
+        public NavButton(string text, string glyph)
+        {
+            base.Text = text;
+            _glyph = glyph;
+            Height = 40;
+            Cursor = Cursors.Hand;
+            BackColor = Theme.Current.Surface;
+            TabStop = true;
+            AccessibleRole = AccessibleRole.PageTab;
+            AccessibleName = text;
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode is Keys.Enter or Keys.Space) OnClick(EventArgs.Empty);
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+        protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
 
         protected override void Draw(Graphics g)
         {
@@ -553,7 +626,8 @@ sealed class Sidebar : Panel
                 using var path = Theme.Rounded(new RectangleF(0, 10, 4, Height - 20), 2);
                 g.FillPath(bar, path);
             }
-            DrawText(g, _glyph, T.Icon, _selected ? Theme.Brand : T.Muted, new RectangleF(16, 0, 24, Height));
+            if (Focused) using (var fp = new Pen(Theme.Brand)) using (var fpath = Theme.Rounded(r, 8)) g.DrawPath(fp, fpath);
+            DrawText(g, _glyph, T.Icon, _selected ? T.BrandText : T.Muted, new RectangleF(16, 0, 24, Height));
             DrawText(g, base.Text, _selected ? T.Bold : T.Body, T.Text, new RectangleF(48, 0, Width - 90, Height));
             if (_badge.Length > 0)
             {

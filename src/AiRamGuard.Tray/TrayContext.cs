@@ -76,7 +76,7 @@ sealed class TrayContext : ApplicationContext
             {
                 var inspected = Guard.Inspect(s.Guard, _state.Profiles, force);
                 var game = Desktop.ForegroundIsFullscreen();
-                var r = Guard.Execute(inspected, dryRun);
+                var r = Guard.Execute(inspected, dryRun, force);
                 var after = r.Killed + r.Trimmed > 0 && !dryRun ? Guard.Scan(_state.Profiles) : inspected.Report;
                 return (r, after, Advisor.Advise(after, KnownConfigs.Read()), game);
             });
@@ -109,7 +109,7 @@ sealed class TrayContext : ApplicationContext
 
     void Toast(CleanResult r, bool force, bool dryRun)
     {
-        var freed = r.FreeAfterBytes - r.FreeBeforeBytes;
+        var freed = r.FreedBytes;
         if (force)
             _icon.ShowBalloonTip(3000, "AI RAM Guard", $"Freed {Theme.Size(Math.Max(0, freed))}. Closed {r.Killed} leftovers, freed memory in {r.Trimmed} AI processes.", ToolTipIcon.Info);
         else if (_state.Settings.Notify && !dryRun && freed > 1L << 30 && DateTime.Now - _lastToast > TimeSpan.FromMinutes(30))
@@ -139,29 +139,33 @@ sealed class TrayContext : ApplicationContext
         var text = $"{Theme.Size(s.FreeRamBytes)} free · AI apps {Theme.Size(r.AiBytes)}";
         _status.Text = $"{_state.StatusText} · {text}";
         var tip = $"AI RAM Guard · {_state.StatusText}\n{text}";
-        _icon.Text = tip.Length > 127 ? tip[..127] : tip;
+        _icon.Text = tip.Length > 127 ? tip[..tip.LastIndexOf(' ', 126)] : tip;
         var old = _icon.Icon;
         _icon.Icon = DrawIcon(1 - (double)s.FreeRamBytes / s.TotalRamBytes, (double)r.AiBytes / s.TotalRamBytes, _state.Paused);
         old?.Dispose();
     }
 
-    /// <summary>Ring: grey = RAM in use, brand colour = the AI share. Dimmed while paused.</summary>
+    /// <summary>
+    /// Ring: brand = the AI share, light = the rest in use, faint track = free. Orange when RAM is nearly full, grey while paused.
+    /// Drawn at 32 px with thick strokes so it still reads when the shell shrinks it to 16.
+    /// </summary>
     static Icon DrawIcon(double usedPct, double aiPct, bool paused)
     {
         using var bmp = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            var rect = new Rectangle(3, 3, 26, 26);
-            var brand = paused ? Color.Gray : Theme.Brand;
-            using var track = new Pen(Color.FromArgb(90, 128, 128, 128), 6);
-            using var used = new Pen(usedPct > 0.85 ? Color.OrangeRed : Color.FromArgb(150, 150, 160), 6);
-            using var ai = new Pen(brand, 6);
+            var rect = new RectangleF(4.5f, 4.5f, 23, 23);
+            // The taskbar follows the system theme, which can differ from the apps theme.
+            var dark = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")?.GetValue("SystemUsesLightTheme") is not 1;
+            var ink = dark ? Color.White : Color.FromArgb(40, 36, 48);
+            var accent = paused ? Color.Gray : usedPct > 0.85 ? Color.FromArgb(240, 138, 62) : Theme.Brand;
+            using var track = new Pen(Color.FromArgb(dark ? 70 : 55, ink), 7);
+            using var used = new Pen(Color.FromArgb(paused ? 110 : 200, ink), 7);
+            using var ai = new Pen(accent, 7);
             g.DrawEllipse(track, rect);
             g.DrawArc(used, rect, -90, (float)(360 * usedPct));
-            g.DrawArc(ai, rect, -90, (float)(360 * Math.Min(aiPct, usedPct)));
-            using var dot = new SolidBrush(brand);
-            g.FillEllipse(dot, 12, 12, 8, 8);
+            g.DrawArc(ai, rect, -90, (float)(360 * Math.Max(0.04, Math.Min(aiPct, usedPct))));
         }
         var h = bmp.GetHicon();
         using var tmp = Icon.FromHandle(h);

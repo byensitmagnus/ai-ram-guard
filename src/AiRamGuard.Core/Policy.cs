@@ -45,9 +45,9 @@ public static class Policy
         var trimAgents = !s.Trim ? [] : underPressure ? candidates : overCap;
 
         var reason = force ? "manual clean"
-            : underPressure ? $"{freeMB} MB free < {limitMB} MB{(fullscreenGame && s.GameMode ? " (game mode)" : "")}"
+            : underPressure ? $"{freeMB / 1024.0:0.0} GB free, below the {limitMB / 1024.0:0.#} GB limit{(fullscreenGame && s.GameMode ? " (game mode)" : "")}"
             : overCap.Count > 0 ? $"over cap: {string.Join(", ", overCap.Select(a => a.Profile.Name))}"
-            : $"{freeMB} MB free, limit {limitMB} MB";
+            : $"{freeMB / 1024.0:0.0} GB free, limit {limitMB / 1024.0:0.#} GB";
         return new Plan(kill, trimAgents.SelectMany(a => a.Processes).ToList(), reason);
     }
 }

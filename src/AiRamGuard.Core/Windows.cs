@@ -61,6 +61,9 @@ public static class Desktop
     {
         var hwnd = Native.GetForegroundWindow();
         if (hwnd == IntPtr.Zero || hwnd == Native.GetDesktopWindow() || hwnd == Native.GetShellWindow()) return false;
+        // A maximised browser or editor also covers the monitor (its frame even overhangs it), but it has a title bar. Games don't.
+        const int GWL_STYLE = -16, WS_CAPTION = 0x00C00000;
+        if ((Native.GetWindowLong(hwnd, GWL_STYLE) & WS_CAPTION) == WS_CAPTION) return false;
         if (!Native.GetWindowRect(hwnd, out var r)) return false;
         var mon = new Native.MONITORINFO();
         if (!Native.GetMonitorInfo(Native.MonitorFromWindow(hwnd, 2), mon)) return false;
@@ -69,7 +72,8 @@ public static class Desktop
     }
 }
 
-public sealed record CleanResult(int Killed, int Trimmed, long FreeBeforeBytes, long FreeAfterBytes, string Reason);
+/// <param name="FreedBytes">What this round itself freed: closed processes plus the working set trimmed away. Not the system-wide change in free RAM, which other apps move too.</param>
+public sealed record CleanResult(int Killed, int Trimmed, long FreeBeforeBytes, long FreeAfterBytes, string Reason, long FreedBytes = 0);
 
 /// <summary>Runs one guard round: read, decide, act, log.</summary>
 public static class Guard
@@ -92,26 +96,48 @@ public static class Guard
     }
 
     public static CleanResult Run(GuardSettings s, ProfileSet profiles, bool force = false, bool dryRun = false) =>
-        Execute(Inspect(s, profiles, force), dryRun);
+        Execute(Inspect(s, profiles, force), dryRun, force);
+
+    static readonly Dictionary<string, (DateTime At, long WorkingSet)> Trimmed = [];
+    static readonly TimeSpan TrimCooldown = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// Trimmed pages that come straight back are being used: trimming them again every round only costs CPU and disk.
+    /// Skip a process trimmed in the last 15 minutes unless it grew by a quarter since.
+    /// </summary>
+    static bool CoolingDown(ProcessInfo p, DateTime now) =>
+        Trimmed.TryGetValue($"{p.Pid}:{p.Created.Ticks}", out var t) && now - t.At < TrimCooldown && p.WorkingSetBytes < t.WorkingSet * 5 / 4;
 
     /// <summary>Carries out a plan. Returns what really happened, not what was planned.</summary>
-    public static CleanResult Execute((Report Report, Plan Plan) inspected, bool dryRun = false)
+    /// <param name="force">Manual "Free RAM now": ignores the trim cooldown.</param>
+    public static CleanResult Execute((Report Report, Plan Plan) inspected, bool dryRun = false, bool force = false)
     {
         var (report, plan) = inspected;
         int killed = 0, trimmed = 0;
+        long freed = 0;
         foreach (var p in plan.Kill)
         {
             var ok = dryRun || TryKill(p);
-            if (ok) killed++;
+            if (ok) { killed++; freed += p.WorkingSetBytes; }
             Log.Write($"{(dryRun ? "would close" : ok ? "closed" : "could not close")} orphan {p.Name} {p.Pid} {p.WorkingSetBytes / 1048576} MB {Analyzer.HelperKey(p.CommandLine)}");
         }
+        var now = DateTime.Now;
+        foreach (var stale in Trimmed.Where(kv => now - kv.Value.At >= TrimCooldown).Select(kv => kv.Key).ToList()) Trimmed.Remove(stale);
         foreach (var p in plan.Trim)
-            if (dryRun || (IsSame(p) && Native.TrimWorkingSet(p.Pid))) trimmed++;
+        {
+            if (!force && CoolingDown(p, now)) continue;
+            if (dryRun) { trimmed++; continue; }
+            var after = TryTrim(p);
+            if (after < 0) continue;
+            trimmed++;
+            freed += Math.Max(0, p.WorkingSetBytes - after);
+            Trimmed[$"{p.Pid}:{p.Created.Ticks}"] = (now, after);
+        }
 
-        var after = dryRun ? report.Snapshot.FreeRamBytes : FreeRamBytes();
-        var result = new CleanResult(killed, trimmed, report.Snapshot.FreeRamBytes, after, plan.Reason);
+        var freeAfter = dryRun ? report.Snapshot.FreeRamBytes : FreeRamBytes();
+        var result = new CleanResult(killed, trimmed, report.Snapshot.FreeRamBytes, freeAfter, plan.Reason, freed);
         if (killed + trimmed > 0)
-            Log.Write($"{(dryRun ? "[dry-run] " : "")}{plan.Reason}: closed {killed} orphans, trimmed {trimmed} AI processes, free {Gb(result.FreeBeforeBytes)} -> {Gb(after)} GB");
+            Log.Write($"{(dryRun ? "[dry-run] " : "")}{plan.Reason}: closed {killed} orphans, trimmed {trimmed} AI processes, freed {freed >> 20} MB, free {Gb(result.FreeBeforeBytes)} -> {Gb(freeAfter)} GB");
         return result;
     }
 
@@ -133,17 +159,19 @@ public static class Guard
         }
     }
 
-    /// <summary>Re-checks identity: the PID could have been reused since the snapshot.</summary>
-    static bool IsSame(ProcessInfo p)
+    /// <summary>Trims after re-checking identity (the PID could have been reused). Returns the working set after, or -1.</summary>
+    static long TryTrim(ProcessInfo p)
     {
         try
         {
             using var proc = Process.GetProcessById(p.Pid);
-            return IsSame(proc, p);
+            if (!IsSame(proc, p) || !Native.TrimWorkingSet(p.Pid)) return -1;
+            proc.Refresh();
+            return proc.WorkingSet64;
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            return false;
+            return -1;
         }
     }
 
@@ -213,6 +241,7 @@ internal static class Native
     [DllImport("user32.dll")] internal static extern IntPtr GetShellWindow();
     [DllImport("user32.dll")] internal static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] internal static extern int GetWindowLong(IntPtr h, int index);
     [DllImport("user32.dll")] internal static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
     [DllImport("user32.dll")] internal static extern bool GetMonitorInfo(IntPtr m, [In, Out] MONITORINFO info);
 

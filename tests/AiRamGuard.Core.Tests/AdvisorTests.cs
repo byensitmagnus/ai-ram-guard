@@ -132,11 +132,12 @@ public class HistoryTests
     }
 
     [Fact]
-    public void Stats_never_count_negative_savings()
+    public void Stats_count_what_the_guard_freed_not_the_system_wide_change()
     {
+        // Free RAM fell (another app grew), but the guard itself freed 300 MB.
         var s = new Stats();
-        s.Record(new CleanResult(2, 5, 5L << 30, 4L << 30, "x"));
-        Assert.Equal(0, s.FreedMB);
+        s.Record(new CleanResult(2, 5, 5L << 30, 4L << 30, "x", 300L << 20));
+        Assert.Equal(300, s.FreedMB);
         Assert.Equal(2, s.OrphansClosed);
     }
 }

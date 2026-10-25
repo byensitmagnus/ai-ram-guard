@@ -10,7 +10,7 @@ authors:
 repository-code: "https://github.com/byensitmagnus/ai-ram-guard"
 url: "https://byens-it.dk"
 license: MIT
-version: 1.0.0
+version: 1.1.0
 date-released: 2026-10-25
 keywords:
   - claude-code

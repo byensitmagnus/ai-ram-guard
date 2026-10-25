@@ -151,10 +151,22 @@ public static class KnownConfigs
         var list = new List<ConfigFile>();
         foreach (var (app, path) in candidates)
         {
-            try { if (File.Exists(path)) list.Add(new ConfigFile(app, path, File.ReadAllText(path))); }
+            try
+            {
+                if (!File.Exists(path)) continue;
+                // ~/.claude.json holds history and can be megabytes: re-read only when it changed.
+                var stamp = File.GetLastWriteTimeUtc(path);
+                lock (Cache)
+                {
+                    if (!Cache.TryGetValue(path, out var c) || c.Stamp != stamp) Cache[path] = c = (stamp, File.ReadAllText(path));
+                    list.Add(new ConfigFile(app, path, c.Content));
+                }
+            }
             catch (IOException) { } // locked by the app right now: skip, advice just won't name the file
             catch (UnauthorizedAccessException) { }
         }
         return list;
     }
+
+    static readonly Dictionary<string, (DateTime Stamp, string Content)> Cache = [];
 }

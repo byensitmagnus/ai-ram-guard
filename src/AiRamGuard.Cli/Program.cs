@@ -48,7 +48,7 @@ switch (cmd)
 
     case "clean":
         var r = Guard.Run(settings, profiles, force: true, dryRun: Has("--dry-run"));
-        Console.WriteLine($"{(Has("--dry-run") ? "[dry-run] " : "")}Closed {r.Killed} orphans, trimmed {r.Trimmed} AI processes. Free RAM {Guard.Gb(r.FreeBeforeBytes)} -> {Guard.Gb(r.FreeAfterBytes)} GB");
+        Console.WriteLine($"{(Has("--dry-run") ? "[dry-run] " : "")}Closed {r.Killed} orphans, trimmed {r.Trimmed} AI processes, freed {r.FreedBytes / 1048576:N0} MB. Free RAM {Guard.Gb(r.FreeBeforeBytes)} -> {Guard.Gb(r.FreeAfterBytes)} GB");
         return 0;
 
     case "watch":
@@ -56,7 +56,7 @@ switch (cmd)
         while (true)
         {
             var w = Guard.Run(settings, profiles);
-            if (w.Killed + w.Trimmed > 0) Console.WriteLine($"{DateTime.Now:HH:mm} {w.Reason}: closed {w.Killed}, trimmed {w.Trimmed}, free {Guard.Gb(w.FreeAfterBytes)} GB");
+            if (w.Killed + w.Trimmed > 0) Console.WriteLine($"{DateTime.Now:HH:mm} {w.Reason}: closed {w.Killed}, trimmed {w.Trimmed}, freed {w.FreedBytes / 1048576:N0} MB, free {Guard.Gb(w.FreeAfterBytes)} GB");
             Thread.Sleep(TimeSpan.FromSeconds(settings.IntervalSeconds));
         }
 

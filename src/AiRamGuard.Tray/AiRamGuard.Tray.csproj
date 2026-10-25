@@ -6,7 +6,8 @@
     <AssemblyName>AiRamGuard</AssemblyName>
     <RootNamespace>AiRamGuard.Tray</RootNamespace>
     <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
-    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- shortcut: the owner-drawn layout uses 96-dpi pixels; Windows scales it (GDI text stays sharp). Per-monitor scaling of every constant is the upgrade. -->
+    <ApplicationHighDpiMode>DpiUnawareGdiScaled</ApplicationHighDpiMode>
     <!-- A RAM tool should be light: workstation GC without concurrent background GC thread. -->
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <TieredPGO>true</TieredPGO>

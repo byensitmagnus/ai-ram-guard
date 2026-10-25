@@ -50,7 +50,8 @@ Read more: [Why Claude Code uses so much RAM on Windows](docs/why-ai-tools-use-s
 
 | | |
 |---|---|
-| 📊 **Live dashboard** | RAM ring, 24-hour history graph and a row per AI app with its icon, process count, MCP servers and a usage bar. |
+| 📊 **Live dashboard** | RAM ring, 24-hour history graph and a row per AI app with its icon, MCP servers (duplicates flagged) and its share of your RAM. |
+| 🕑 **Activity timeline** | Everything the guard did, in plain words: what it freed, which leftovers it closed and why. |
 | 💡 **Recommendations** | Finds the *cause*: "`rea-agents` runs 11× under Claude: it's configured in `~/.claude.json`", "12 npx wrappers in front of desktop-commander", with the RAM each fix saves and a button that opens the right file. |
 | 🧹 **Closes leftovers** | MCP servers and `npx` wrappers it saw an AI app start, once that app is gone. Anything you started yourself, from a terminal or a launcher, is left alone. |
 | 🪶 **Frees memory without closing apps** | When free RAM drops below your limit, idle AI memory is moved to the pagefile. Apps keep running. The app you are using is never touched. |
@@ -65,10 +66,12 @@ Read more: [Why Claude Code uses so much RAM on Windows](docs/why-ai-tools-use-s
 <table>
   <tr>
     <td><img src="assets/screenshot-recommendations.png" alt="Recommendations: duplicated MCP servers and the config file that loads them"></td>
+    <td><img src="assets/screenshot-activity.png" alt="Activity: a timeline of what AI RAM Guard freed and closed"></td>
     <td><img src="assets/screenshot-settings.png" alt="Settings: automatic guard, limits, per-app caps"></td>
   </tr>
   <tr>
     <td align="center"><b>Recommendations</b>: fix the cause</td>
+    <td align="center"><b>Activity</b>: what it did and why</td>
     <td align="center"><b>Settings</b>: limits, game mode, caps</td>
   </tr>
 </table>

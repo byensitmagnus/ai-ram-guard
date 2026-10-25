@@ -8,7 +8,8 @@ namespace AiRamGuard.Tray;
 sealed class Theme
 {
     public static readonly Color Brand = ColorTranslator.FromHtml("#ba01c4");
-    public static readonly Color BrandDeep = ColorTranslator.FromHtml("#5b0aa8");
+    // Same hue, darker: a blue-violet end made gradients read as two colours.
+    public static readonly Color BrandDeep = ColorTranslator.FromHtml("#8a0092");
 
     public bool Dark { get; }
     public Color Bg { get; }
@@ -20,6 +21,8 @@ sealed class Theme
     public Color Good { get; } = ColorTranslator.FromHtml("#2fb380");
     public Color Warn { get; } = ColorTranslator.FromHtml("#f08a3e");
     public Color Other { get; }
+    /// <summary>Brand colour for text: lifted on dark backgrounds so it reads (#ba01c4 on near-black is too dim).</summary>
+    public Color BrandText => Dark ? ColorTranslator.FromHtml("#e15bea") : Brand;
 
     public static readonly string IconFont = FontFamily.Families.Any(f => f.Name == "Segoe Fluent Icons") ? "Segoe Fluent Icons" : "Segoe MDL2 Assets";
     public Font Body { get; } = new("Segoe UI", 9.75f);
@@ -28,6 +31,8 @@ sealed class Theme
     public Font Title { get; } = new("Segoe UI Semibold", 15f);
     public Font Big { get; } = new("Segoe UI Semibold", 22f);
     public Font Icon { get; } = new(IconFont, 12f);
+    public Font Section { get; } = new("Segoe UI Semibold", 12f);
+    public Font Heading { get; } = new("Segoe UI Semibold", 20f);
 
     Theme(bool dark)
     {

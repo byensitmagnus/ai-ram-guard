@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.1.0 (2026-10-25)
+
+After an independent design and code review.
+
+**Fixes**
+- A maximised window (browser, editor) no longer counts as a fullscreen game, so game mode only kicks in for real games
+- Memory is not trimmed again every round: a process trimmed in the last 15 minutes is skipped unless it grew by a quarter ("Free RAM now" still trims everything)
+- "Freed by AI RAM Guard" now counts what the guard itself freed, not every change in free RAM
+- `~/.claude.json` is only re-read when it changed
+
+**Look and feel**
+- Overview: AI usage is the big number in the ring; free RAM, with your limit, is the first tile
+- Duplicated MCP servers show as orange chips (`desktop-commander ×48`) on each app
+- App bars show the share of installed RAM, with a tick at the app's cap
+- History graph with round GB steps and clock times
+- Activity is a readable timeline grouped by day instead of a raw log
+- Recommendations show savings as a badge; easier-to-read text width
+- Sharper logo and a clearer tray icon that follows the taskbar theme
+- One brand colour family (no blue-violet gradient end); brand text is lifted for contrast on dark
+- Toggles slide, buttons and switches have screen-reader names
+- Keyboard: Ctrl+1–4 switch pages, F5 checks again, Esc closes the window
+- High-DPI screens: the window is scaled by Windows with sharp text instead of clipping
+
+
 ## 1.0.0 (2026-10-25)
 
 First public release.
