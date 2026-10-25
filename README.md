@@ -76,18 +76,24 @@ On macOS? It's the same bug there ([claude-code#1935](https://github.com/anthrop
 | 💾 **Disk** | Shows where AI tools and their caches write (npm, uv, pip, NuGet, Playwright, Hugging Face, Ollama, temp, Claude Code, Codex) and how much is on the system drive. Moves a cache to another drive in one click, with undo. |
 | ⏸️ **Pause** | One click pauses the guard for an hour. |
 | 🖥️ **Light** | ~20–30 MB, trims itself between rounds. No Electron, no background services, no admin rights. |
-| 📦 **Real install** | Start menu shortcut, starts with Windows, uninstalls from *Settings → Apps*. Or run it portable. |
+| 📦 **Real install** | Start menu shortcut, `airg` on your PATH, starts with Windows, uninstalls from *Settings → Apps*. Or run it portable. |
 | ⌨️ **CLI + JSON** | `airg scan`, `airg advise`, `airg clean`, `airg disk` for scripts, dashboards and other tools. |
 | 🧩 **Framework** | AI apps are plain data in [`profiles.json`](src/AiRamGuard.Core/profiles.json). Add a new tool with a pull request, or locally with no code. |
 
 <table>
   <tr>
     <td><img src="assets/screenshot-recommendations.png" alt="Recommendations: duplicated MCP servers and the config file that loads them"></td>
+    <td><img src="assets/screenshot-disk.png" alt="Disk: where AI tools and caches write, with a button to move a cache to another drive"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Recommendations</b>: fix the cause</td>
+    <td align="center"><b>Disk</b>: caches off the system drive, with undo</td>
+  </tr>
+  <tr>
     <td><img src="assets/screenshot-activity.png" alt="Activity: a timeline of what AI RAM Guard freed and closed"></td>
     <td><img src="assets/screenshot-settings.png" alt="Settings: automatic guard, limits, per-app caps"></td>
   </tr>
   <tr>
-    <td align="center"><b>Recommendations</b>: fix the cause</td>
     <td align="center"><b>Activity</b>: what it did and why</td>
     <td align="center"><b>Settings</b>: limits, game mode, caps</td>
   </tr>

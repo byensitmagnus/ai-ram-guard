@@ -14,7 +14,8 @@ public sealed record StorageSpot(string Id, string Name, string[] EnvVars, strin
 
 /// <param name="Path">Where the tool writes now.</param>
 /// <param name="RealPath">The same, after following a junction or symbolic link. Its drive is where the bytes really go.</param>
-public sealed record SpotUsage(StorageSpot Spot, string Path, string RealPath, bool Exists, long Bytes, bool OnSystemDrive)
+/// <param name="Links">Links inside: such a cache is not moved (see <see cref="Storage.LinkCount"/>).</param>
+public sealed record SpotUsage(StorageSpot Spot, string Path, string RealPath, bool Exists, long Bytes, bool OnSystemDrive, int Links = 0)
 {
     public string Drive => System.IO.Path.GetPathRoot(RealPath) ?? "";
 }
@@ -89,7 +90,8 @@ public static class Storage
         var system = Path.GetPathRoot(Environment.SystemDirectory);
         var exists = Path.IsPathFullyQualified(path) && Directory.Exists(path);
         return new SpotUsage(s, path, real, exists, exists ? FolderBytes(path) : 0,
-            string.Equals(Path.GetPathRoot(real), system, StringComparison.OrdinalIgnoreCase));
+            string.Equals(Path.GetPathRoot(real), system, StringComparison.OrdinalIgnoreCase),
+            exists && s.Movable && s.CopyContents ? LinkCount(path) : 0);
     }
 
     /// <summary>Follows a junction or symbolic link at <paramref name="path"/> itself (not deeper ones).</summary>

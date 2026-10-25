@@ -71,11 +71,11 @@ switch (cmd)
     case "disk":
         var spots = Storage.Measure();
         if (Has("--json"))
-            Console.WriteLine(JsonSerializer.Serialize(spots.Select(u => new { id = u.Spot.Id, name = u.Spot.Name, path = u.Path, realPath = u.RealPath, mb = u.Bytes / 1048576, u.OnSystemDrive, movable = u.Spot.Movable, variable = u.Spot.EnvVars[0] }), new JsonSerializerOptions { WriteIndented = true }));
+            Console.WriteLine(JsonSerializer.Serialize(spots.Select(u => new { id = u.Spot.Id, name = u.Spot.Name, path = u.Path, realPath = u.RealPath, mb = u.Bytes / 1048576, u.OnSystemDrive, movable = u.Spot.Movable && u.Links == 0, links = u.Links, variable = u.Spot.EnvVars[0] }), new JsonSerializerOptions { WriteIndented = true }));
         else
         {
             foreach (var u in spots.Where(u => u.Exists).OrderByDescending(u => u.Bytes))
-                Console.WriteLine($"{u.Spot.Id,-12} {Guard.Gb(u.Bytes),6} GB  {(u.OnSystemDrive ? "system drive" : u.Drive),-12}  {u.RealPath}");
+                Console.WriteLine($"{u.Spot.Id,-12} {Guard.Gb(u.Bytes),6} GB  {(u.OnSystemDrive ? "system drive" : u.Drive),-12}  {u.RealPath}{(u.Links > 0 ? $"  ({u.Links} links: not movable)" : "")}");
             Console.WriteLine("\nMove one with 'airg move <id> D:'. Claude Code and Codex hold sessions and settings: they are listed, not moved.");
         }
         return 0;

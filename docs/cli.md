@@ -11,12 +11,12 @@
 | `airg watch` | Guard every 2 minutes (headless version of the app) |
 | `airg watch --min-free 8 --interval 120 --no-game-mode` | Custom limit (GB), interval (s), game mode off |
 | `airg disk` | Where AI tools and their caches write, size and drive, biggest first |
-| `airg disk --json` | Same as JSON: `id`, `name`, `path`, `realPath`, `mb`, `onSystemDrive`, `movable`, `variable` |
+| `airg disk --json` | Same as JSON: `id`, `name`, `path`, `realPath`, `mb`, `onSystemDrive`, `movable`, `links`, `variable` |
 | `airg move <id> D:` | Move a cache to `D:\AiCache\<id>` and point its tool there (user environment variable) |
 | `airg move <id> <folder>` | Same, to an empty or new folder of your choice |
 | `airg undo <id>` | Move it back and restore the variable exactly as it was (or remove it) |
 
-Ids for `move`: `npm`, `uv`, `pip`, `nuget`, `playwright`, `huggingface`, `ollama`, `temp`. `claude` and `codex` are listed by `disk` but not moved: they hold sessions and settings. Programs you start after a move use the new folder; restart the ones that were open.
+Ids for `move`: `npm`, `uv`, `pip`, `nuget`, `playwright`, `huggingface`, `ollama`, `temp`. `claude` and `codex` are listed by `disk` but not moved: they hold sessions and settings. Neither is a cache with links in it (Hugging Face makes them in Developer Mode): only an admin can recreate links, so it would arrive half-moved. Programs you start after a move use the new folder; restart the ones that were open.
 
 Exit code is `0` on success and `1` for an unknown command or a move that was refused.
 

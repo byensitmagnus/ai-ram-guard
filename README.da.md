@@ -25,6 +25,8 @@ Kendte fejlrapporter, som AI RAM Guard afhjælper på din PC, indtil de er rette
 - 🧹 **Rydder op:** lukker MCP-servere, som den har set et AI-program starte, når programmet er væk. Det, du selv har startet, rører den ikke.
 - 🪶 **Frigør RAM uden at lukke noget:** flytter ubrugt AI-hukommelse til swapfilen, når der er for lidt fri RAM. Programmet, du bruger, røres aldrig.
 - 🎯 **Loft pr. program**, ⏸️ **pause i en time** og 🎮 **spiltilstand** med strammere grænse, mens et spil kører i fuld skærm.
+- 🐢 **Lavere prioritet i baggrunden:** AI-programmer, du ikke bruger, giver først slip på RAM, og under spil får de også mindre CPU. Det sættes tilbage, så snart du skifter til dem.
+- 💾 **Disk:** viser, hvor AI-værktøjer og deres cache skriver, og flytter en cache væk fra systemdrevet med ét klik. Kan fortrydes.
 - 📦 Rigtig installation uden administratorrettigheder, og kommandolinjen `airg` til scripts.
 
 ## Kom i gang
@@ -38,6 +40,7 @@ Så ligger den i Start-menuen, starter med Windows og kan fjernes under *Indstil
 airg scan     RAM pr. AI-program
 airg advise   hvad du skal rette, så det ikke sker igen
 airg clean    ryd op nu
+airg disk     hvor AI-værktøjer fylder på disken
 ```
 
 ## Om

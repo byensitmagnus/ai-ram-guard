@@ -483,6 +483,7 @@ sealed class DiskPage : Page
         if (movedByUs) return Button(text, where + " · moved by AI RAM Guard", "Undo move", () => UndoMove(u));
         void Open() { if (Directory.Exists(u.RealPath)) MainForm.Open(u.RealPath); }
         if (!u.Spot.Movable) return Button(text, where + $" · holds sessions: close the app, then set {u.Spot.EnvVars[0]}", "Open", Open);
+        if (u.Links > 0) return Button(text, where + $" · {u.Links} links inside: only an admin can move those, so it stays", "Open", Open);
         var targets = u.OnSystemDrive ? Storage.Targets(u).OrderByDescending(d => d.AvailableFreeSpace).ToList() : [];
         if (targets.Count == 0) return Button(text, where, "Open", Open);
         if (targets.Count == 1) return Button(text, where, $"Move to {targets[0].Name.TrimEnd('\\')}", () => MoveTo(u, targets[0]));
