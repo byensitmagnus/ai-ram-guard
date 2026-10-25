@@ -32,6 +32,8 @@ sealed class TrayContext : ApplicationContext
 
         Signals.Listen(Signals.Show, () => _ui.Post(_ => ShowWindow(), null));
         Signals.Listen(Signals.Exit, () => _ui.Post(_ => ExitThread(), null));
+        _onForeground = (_, _, _, _, _, _, _) => Guard.ForegroundChanged();
+        _foregroundHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _onForeground, 0, 0, 0);
 
         RunRound(force: false);
         if (showWindow) ShowWindow();
@@ -76,7 +78,7 @@ sealed class TrayContext : ApplicationContext
             {
                 var inspected = Guard.Inspect(s.Guard, _state.Profiles, force);
                 var game = Desktop.ForegroundIsFullscreen();
-                var r = Guard.Execute(inspected, dryRun, force);
+                var r = Guard.Execute(inspected, dryRun, force, prioritize: true);
                 var after = r.Killed + r.Trimmed > 0 && !dryRun ? Guard.Scan(_state.Profiles) : inspected.Report;
                 return (r, after, Advisor.Advise(after, KnownConfigs.Read()), game);
             });
@@ -176,6 +178,14 @@ sealed class TrayContext : ApplicationContext
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);
 
+    // Out-of-context hook: called on this (UI) thread's message loop when the foreground window changes.
+    delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int obj, int child, uint thread, uint time);
+    const uint EVENT_SYSTEM_FOREGROUND = 3;
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventProc proc, uint pid, uint thread, uint flags);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool UnhookWinEvent(IntPtr hook);
+    readonly WinEventProc _onForeground; // kept in a field: the hook outlives any local, and a collected delegate crashes the callback
+    readonly IntPtr _foregroundHook;
+
     void ShowWindow()
     {
         if (_form is null || _form.IsDisposed)
@@ -191,6 +201,8 @@ sealed class TrayContext : ApplicationContext
     protected override void ExitThreadCore()
     {
         _state.History.Save(Paths.HistoryFile);
+        UnhookWinEvent(_foregroundHook);
+        Guard.RestorePriorities(); // nobody would put them back after we are gone
         _guardTimer.Dispose();
         _sampleTimer.Dispose();
         _form?.Close();

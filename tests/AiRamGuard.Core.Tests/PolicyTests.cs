@@ -83,6 +83,31 @@ public class PolicyTests
     }
 
     [Fact]
+    public void Background_AI_apps_get_lower_priority_and_less_CPU_only_while_gaming()
+    {
+        // Plenty of RAM: nothing to trim, but Claude in front keeps its priority while Codex is lowered.
+        var plan = Policy.Decide(R(20_000), new GuardSettings(), foregroundPid: 1, fullscreenGame: false);
+        Assert.Equal([3], plan.Lower.Select(p => p.Pid));
+        Assert.False(plan.LowerCpu);
+        Assert.True(Policy.Decide(R(20_000), new GuardSettings(), 0, fullscreenGame: true).LowerCpu);
+        Assert.False(Policy.Decide(R(20_000), new GuardSettings { GameMode = false }, 0, fullscreenGame: true).LowerCpu);
+    }
+
+    [Fact]
+    public void Priority_is_left_alone_when_switched_off_or_paused()
+    {
+        var now = new DateTime(2026, 10, 25, 12, 0, 0);
+        var off = Policy.Decide(R(1_000), new GuardSettings { LowerPriority = false }, 0, fullscreenGame: true);
+        Assert.Empty(off.Lower);
+        Assert.False(off.LowerCpu);
+        // A manual clean while paused frees RAM, but must not start lowering again.
+        var paused = Policy.Decide(R(1_000), new GuardSettings { PausedUntil = now.AddHours(1) }, 0, true, force: true, now: now);
+        Assert.NotEmpty(paused.Trim);
+        Assert.Empty(paused.Lower);
+        Assert.False(paused.LowerCpu);
+    }
+
+    [Fact]
     public void A_bad_pattern_fails_when_the_file_is_read_not_mid_round() =>
         Assert.ThrowsAny<ArgumentException>(() => ProfileSet.Parse("""{ "helperPatterns": ["(unclosed"] }"""));
 

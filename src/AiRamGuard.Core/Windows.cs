@@ -12,6 +12,8 @@ public static class Paths
     public static string HistoryFile { get; } = Path.Combine(DataDir, "history.json");
     public static string StatsFile { get; } = Path.Combine(DataDir, "stats.json");
     public static string LineageFile { get; } = Path.Combine(DataDir, "lineage.json");
+    /// <summary>Undo records for moved caches. In ConfigDir with the settings: losing it would lose the way back.</summary>
+    public static string MovesFile { get; } = Path.Combine(ConfigDir, "moves.json");
 }
 
 /// <summary>Reads processes and memory from Windows.</summary>
@@ -110,7 +112,8 @@ public static class Guard
 
     /// <summary>Carries out a plan. Returns what really happened, not what was planned.</summary>
     /// <param name="force">Manual "Free RAM now": ignores the trim cooldown.</param>
-    public static CleanResult Execute((Report Report, Plan Plan) inspected, bool dryRun = false, bool force = false)
+    /// <param name="prioritize">Apply <see cref="Plan.Lower"/>. Only for a long-running guard: it has to be there to restore the priority later.</param>
+    public static CleanResult Execute((Report Report, Plan Plan) inspected, bool dryRun = false, bool force = false, bool prioritize = false)
     {
         var (report, plan) = inspected;
         int killed = 0, trimmed = 0;
@@ -133,12 +136,73 @@ public static class Guard
             freed += Math.Max(0, p.WorkingSetBytes - after);
             Trimmed[$"{p.Pid}:{p.Created.Ticks}"] = (now, after);
         }
+        if (prioritize) Prioritize(dryRun ? [] : plan.Lower, !dryRun && plan.LowerCpu);
 
         var freeAfter = dryRun ? report.Snapshot.FreeRamBytes : FreeRamBytes();
         var result = new CleanResult(killed, trimmed, report.Snapshot.FreeRamBytes, freeAfter, plan.Reason, freed);
         if (killed + trimmed > 0)
             Log.Write($"{(dryRun ? "[dry-run] " : "")}{plan.Reason}: closed {killed} orphans, trimmed {trimmed} AI processes, freed {freed >> 20} MB, free {Gb(result.FreeBeforeBytes)} -> {Gb(freeAfter)} GB");
         return result;
+    }
+
+    /// <summary>What the guard changed in one process. It restores exactly that, and only while the value is still the one it set.</summary>
+    internal sealed class Lowered(ProcessInfo p)
+    {
+        public readonly ProcessInfo P = p;
+        public bool Memory, Cpu, Qos;
+    }
+
+    static readonly object PriorityGate = new(); // rounds run on the thread pool, foreground changes on the UI thread
+    static readonly Dictionary<string, Lowered> LoweredNow = [];
+
+    /// <summary>Lowers background AI processes and restores the ones that should not be lowered any more: in front now, gone, or the game is over.</summary>
+    static void Prioritize(IReadOnlyList<ProcessInfo> lower, bool cpu)
+    {
+        lock (PriorityGate)
+        {
+            var want = new Dictionary<string, ProcessInfo>();
+            foreach (var p in lower) want[$"{p.Pid}:{p.Created.Ticks}"] = p;
+            var restored = 0;
+            foreach (var key in LoweredNow.Keys.Where(k => !want.ContainsKey(k)).ToList())
+            {
+                if (LoweredNow[key].Cpu) restored++;
+                Native.Restore(LoweredNow[key], memory: true);
+                LoweredNow.Remove(key);
+            }
+            var cpuBefore = LoweredNow.Values.Count(l => l.Cpu);
+            foreach (var (key, p) in want)
+            {
+                if (!LoweredNow.TryGetValue(key, out var l)) LoweredNow[key] = l = new Lowered(p);
+                if (!cpu && (l.Cpu || l.Qos)) { if (l.Cpu) restored++; Native.Restore(l, memory: false); }
+                Native.Lower(l, cpu);
+            }
+            var cpuNow = LoweredNow.Values.Count(l => l.Cpu);
+            if (cpuNow > cpuBefore) Log.Write($"game in front: lowered CPU priority of {cpuNow - cpuBefore} AI processes");
+            if (restored > 0) Log.Write($"restored CPU priority of {restored} AI processes");
+        }
+    }
+
+    /// <summary>Puts back every priority the guard lowered. On exit, and when an app you switch to must not wait a round for it.</summary>
+    public static void RestorePriorities()
+    {
+        lock (PriorityGate)
+        {
+            foreach (var l in LoweredNow.Values) Native.Restore(l, memory: true);
+            LoweredNow.Clear();
+        }
+    }
+
+    /// <summary>The foreground window changed: you switched to a lowered app, or left the game. Cheap, no scan.</summary>
+    public static void ForegroundChanged()
+    {
+        lock (PriorityGate)
+        {
+            if (LoweredNow.Count == 0) return;
+            var fg = Desktop.ForegroundPid();
+            var cpuLowered = LoweredNow.Values.Any(l => l.Cpu || l.Qos);
+            if (!LoweredNow.Values.Any(l => l.P.Pid == fg) && !(cpuLowered && !Desktop.ForegroundIsFullscreen())) return;
+        }
+        RestorePriorities(); // the next round lowers what is still in the background
     }
 
     /// <summary>A RAM tool should practise what it preaches: drop our own idle pages between rounds.</summary>
@@ -244,6 +308,86 @@ internal static class Native
     [DllImport("user32.dll")] internal static extern int GetWindowLong(IntPtr h, int index);
     [DllImport("user32.dll")] internal static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
     [DllImport("user32.dll")] internal static extern bool GetMonitorInfo(IntPtr m, [In, Out] MONITORINFO info);
+
+    const uint PROCESS_SET_INFORMATION = 0x0200, NORMAL_PRIORITY_CLASS = 0x20, BELOW_NORMAL_PRIORITY_CLASS = 0x4000;
+    const int ProcessMemoryPriority = 0, ProcessPowerThrottling = 4;
+    const uint MEMORY_PRIORITY_LOW = 2, MEMORY_PRIORITY_NORMAL = 5, EXECUTION_SPEED = 1;
+
+    [StructLayout(LayoutKind.Sequential)] struct POWER_THROTTLING { public uint Version, ControlMask, StateMask; }
+
+    [DllImport("kernel32.dll")] static extern bool GetProcessTimes(IntPtr h, out long creation, out long exit, out long kernel, out long user);
+    [DllImport("kernel32.dll")] static extern bool GetProcessInformation(IntPtr h, int cls, out uint info, uint size);
+    [DllImport("kernel32.dll")] static extern bool SetProcessInformation(IntPtr h, int cls, ref uint info, uint size);
+    [DllImport("kernel32.dll")] static extern bool GetProcessInformation(IntPtr h, int cls, ref POWER_THROTTLING info, uint size);
+    [DllImport("kernel32.dll")] static extern bool SetProcessInformation(IntPtr h, int cls, ref POWER_THROTTLING info, uint size);
+    [DllImport("kernel32.dll")] static extern uint GetPriorityClass(IntPtr h);
+    [DllImport("kernel32.dll")] static extern bool SetPriorityClass(IntPtr h, uint c);
+
+    /// <summary>Opens a process for priority changes, only while it is still the one that was scanned (PIDs get reused). Zero otherwise.</summary>
+    static IntPtr OpenSame(ProcessInfo p)
+    {
+        var h = OpenProcess(PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION, false, p.Pid);
+        if (h == IntPtr.Zero) return h;
+        if (GetProcessTimes(h, out var created, out _, out _, out _) && Math.Abs((DateTime.FromFileTime(created) - p.Created).TotalSeconds) <= 2) return h;
+        CloseHandle(h);
+        return IntPtr.Zero;
+    }
+
+    /// <summary>EcoQoS state, or null when Windows can't tell (older builds): then it is left alone.</summary>
+    static POWER_THROTTLING? Throttling(IntPtr h)
+    {
+        var t = new POWER_THROTTLING { Version = 1 };
+        return GetProcessInformation(h, ProcessPowerThrottling, ref t, (uint)Marshal.SizeOf<POWER_THROTTLING>()) ? t : null;
+    }
+
+    static bool SetThrottling(IntPtr h, uint mask)
+    {
+        var t = new POWER_THROTTLING { Version = 1, ControlMask = mask, StateMask = mask }; // mask 0: the system decides again
+        return SetProcessInformation(h, ProcessPowerThrottling, ref t, (uint)Marshal.SizeOf<POWER_THROTTLING>());
+    }
+
+    /// <summary>
+    /// Low memory priority: Windows repurposes these pages first when RAM runs out. With <paramref name="cpu"/> also below-normal
+    /// priority and EcoQoS (efficiency cores, lower clocks). Only values still at Windows' default are changed: an app's or the user's own choice is kept.
+    /// </summary>
+    internal static void Lower(Guard.Lowered l, bool cpu)
+    {
+        if (l.Memory && (!cpu || l.Cpu && l.Qos)) return;
+        var h = OpenSame(l.P);
+        if (h == IntPtr.Zero) return;
+        try
+        {
+            if (!l.Memory && GetProcessInformation(h, ProcessMemoryPriority, out var mem, 4) && mem == MEMORY_PRIORITY_NORMAL)
+            {
+                var low = MEMORY_PRIORITY_LOW;
+                l.Memory = SetProcessInformation(h, ProcessMemoryPriority, ref low, 4);
+            }
+            if (!cpu) return;
+            if (!l.Cpu && GetPriorityClass(h) == NORMAL_PRIORITY_CLASS) l.Cpu = SetPriorityClass(h, BELOW_NORMAL_PRIORITY_CLASS);
+            if (!l.Qos && Throttling(h) is { } t && (t.ControlMask & EXECUTION_SPEED) == 0) l.Qos = SetThrottling(h, EXECUTION_SPEED);
+        }
+        finally { CloseHandle(h); }
+    }
+
+    /// <summary>Undoes <see cref="Lower"/>: the CPU part, and with <paramref name="memory"/> the memory priority too.</summary>
+    internal static void Restore(Guard.Lowered l, bool memory)
+    {
+        var h = OpenSame(l.P);
+        if (h != IntPtr.Zero)
+            try
+            {
+                if (memory && l.Memory && GetProcessInformation(h, ProcessMemoryPriority, out var mem, 4) && mem == MEMORY_PRIORITY_LOW)
+                {
+                    var normal = MEMORY_PRIORITY_NORMAL;
+                    SetProcessInformation(h, ProcessMemoryPriority, ref normal, 4);
+                }
+                if (l.Cpu && GetPriorityClass(h) == BELOW_NORMAL_PRIORITY_CLASS) SetPriorityClass(h, NORMAL_PRIORITY_CLASS);
+                if (l.Qos && Throttling(h) is { } t && (t.ControlMask & t.StateMask & EXECUTION_SPEED) != 0) SetThrottling(h, 0);
+            }
+            finally { CloseHandle(h); }
+        if (memory) l.Memory = false; // a process that is gone has nothing left to restore
+        l.Cpu = l.Qos = false;
+    }
 
     /// <summary>Moves a process's idle pages to the pagefile. The process keeps running and pages back in on use.</summary>
     internal static bool TrimWorkingSet(int pid)

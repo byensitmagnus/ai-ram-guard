@@ -64,8 +64,31 @@ Trimming lowers the number in Task Manager's "Memory" column right away and give
 
 If the foreground window covers its whole monitor and doesn't belong to an AI app, the stricter limit applies.
 
+## Priority
+
+Every round, AI apps that are not in front get **low memory priority** (`SetProcessInformation`, `ProcessMemoryPriority` 2 instead of 5). That takes nothing away while there is RAM to spare; when RAM runs out, Windows repurposes their pages first instead of your game's or browser's.
+
+While a game is in front (game mode), they also get **below-normal CPU priority** and **EcoQoS** (`ProcessPowerThrottling`, the efficiency mode Task Manager marks with a leaf), so the game wins the CPU.
+
+Only values still at Windows' default are changed: a priority you or the app itself chose is kept. The original is put back when you switch to the app (a foreground hook reacts at once), when the game ends, when the guard is paused or turned off, and when AI RAM Guard exits. None of it needs admin rights. The one-shot CLI commands don't change priority, since nothing would be left running to restore it.
+
+## Disk
+
+`airg disk` and the *Disk* page read where each tool writes: its environment variable (user, then machine), npm's `cache=` in `~/.npmrc`, else the tool's documented default. A junction at that path is followed to show the real drive. Sizes don't count what links inside a folder point to.
+
+**Move** copies the files with `robocopy /E /MOVE /XJ`, then sets the tool's own variable (`npm_config_cache`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`, `NUGET_PACKAGES`, `PLAYWRIGHT_BROWSERS_PATH`, `HF_HOME`, `OLLAMA_MODELS`, `TEMP`/`TMP`) for your user:
+
+- The undo record (old raw value and type, or "not set") is saved before anything changes.
+- A file is removed from the old folder only after it was copied; files in use stay and are picked up by moving again.
+- `/XJ`: junctions are never followed, so nothing outside the cache moves.
+- The target must be an empty or new folder on a fixed drive, never a drive root, so **Undo** can move everything in it back.
+- Temp files are not copied, only the variables switch.
+
+If you put `TEMP` on a Dev Drive, Microsoft notes that Windows Update needs the `WinSetupMon` filter allowed on it.
+
 ## What it never does
 
 - Close an AI app or a live session
 - Close anything that isn't a helper it saw an AI app start
 - Need admin rights, talk to the network or send telemetry
+- Move Claude Code's or Codex's folders, or anything outside a cache folder

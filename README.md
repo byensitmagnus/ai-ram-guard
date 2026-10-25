@@ -71,11 +71,13 @@ On macOS? It's the same bug there ([claude-code#1935](https://github.com/anthrop
 | 🧹 **Closes leftovers** | MCP servers and `npx` wrappers it saw an AI app start, once that app is gone. Anything you started yourself, from a terminal or a launcher, is left alone. |
 | 🪶 **Frees memory without closing apps** | When free RAM drops below your limit, idle AI memory is moved to the pagefile. Apps keep running. The app you are using is never touched. |
 | 🎯 **Per-app caps** | "Codex may use at most 3 GB." Above it, its idle memory is freed even when the PC has RAM to spare. |
-| 🎮 **Game mode** | While a fullscreen game is in front, a stricter limit applies, so your game gets the RAM. |
+| 🎮 **Game mode** | While a fullscreen game is in front, a stricter limit applies, and background AI apps get lower CPU priority and efficiency mode (EcoQoS), so your game gets the RAM and the CPU. |
+| 🐢 **Lower priority in the background** | AI apps you are not using get low memory priority, so Windows frees their memory first instead of your game's or browser's. Restored the moment you switch to them. |
+| 💾 **Disk** | Shows where AI tools and their caches write (npm, uv, pip, NuGet, Playwright, Hugging Face, Ollama, temp, Claude Code, Codex) and how much is on the system drive. Moves a cache to another drive in one click, with undo. |
 | ⏸️ **Pause** | One click pauses the guard for an hour. |
 | 🖥️ **Light** | ~20–30 MB, trims itself between rounds. No Electron, no background services, no admin rights. |
 | 📦 **Real install** | Start menu shortcut, starts with Windows, uninstalls from *Settings → Apps*. Or run it portable. |
-| ⌨️ **CLI + JSON** | `airg scan`, `airg advise`, `airg clean` for scripts, dashboards and other tools. |
+| ⌨️ **CLI + JSON** | `airg scan`, `airg advise`, `airg clean`, `airg disk` for scripts, dashboards and other tools. |
 | 🧩 **Framework** | AI apps are plain data in [`profiles.json`](src/AiRamGuard.Core/profiles.json). Add a new tool with a pull request, or locally with no code. |
 
 <table>
@@ -108,6 +110,8 @@ airg advise               permanent fixes, with the config file to change
 airg clean --dry-run      show what would be closed / freed
 airg clean                close leftovers and free AI memory now
 airg watch --min-free 6   guard continuously (headless version of the app)
+airg disk                 where AI tools and caches write, and how much
+airg move npm D:          move a cache to another drive (airg undo npm puts it back)
 ```
 
 ```text
@@ -137,6 +141,8 @@ AI RAM Guard was designed to **never break the work you are doing**:
 - Right before closing or freeing memory, it checks the PID still belongs to the same process.
 - The app in front (its window, renderers and helpers, or the terminal a CLI agent runs in) is never trimmed.
 - Freeing memory (`EmptyWorkingSet`) doesn't end anything. It's the mechanism Windows itself uses under memory pressure.
+- Lowering priority only changes values still at Windows' default, and puts back exactly what it changed: when you switch to the app, when the game ends, when you pause, and when AI RAM Guard exits.
+- Moving a cache uses Windows' own `robocopy`: a file is deleted from the old folder only after it was copied, files in use stay put, and links inside the folder are never followed. The old variable is saved first, so **Undo** restores it exactly. Claude Code and Codex folders hold sessions and settings, so they are shown but never moved.
 - Config files are only read. No network access, no telemetry, no admin rights. Every action is logged and shown on the *Activity* page.
 
 Details: [docs/how-it-works.md](docs/how-it-works.md).
@@ -178,8 +184,8 @@ Not yet. The analysis core is platform-neutral; the process reader is Windows-on
 - [x] Analysis core, leftover cleanup, memory freeing, game mode, CLI and JSON
 - [x] Dashboard with history, recommendations from real config files, per-app caps, pause
 - [x] Per-user installer with Start menu, autostart and uninstall
-- [ ] See where AI tools write to disk, and move caches to another drive in one click (with rollback)
-- [ ] Lower CPU and memory priority for idle AI processes, instead of trimming them again and again
+- [x] See where AI tools write to disk, and move caches to another drive in one click (with undo)
+- [x] Lower memory priority for AI apps in the background, and CPU priority while you game
 - [ ] One-click config fixes (with backup) for the recommendations
 - [ ] winget and Scoop packages
 - [ ] Code-signed releases

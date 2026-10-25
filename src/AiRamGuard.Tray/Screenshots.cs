@@ -19,10 +19,11 @@ static class Screenshots
 
         using var form = new MainForm(state) { StartPosition = FormStartPosition.Manual, Location = new Point(-5000, -5000), ShowInTaskbar = false, Size = new Size(1180, 860) };
         form.Show();
-        foreach (var page in new[] { "Overview", "Recommendations", "Settings", "Activity" })
+        foreach (var page in new[] { "Overview", "Recommendations", "Disk", "Settings", "Activity" })
         {
             form.ShowPage(page);
             Application.DoEvents();
+            for (var i = 0; i < 1200 && form.DiskBusy; i++) { Thread.Sleep(50); Application.DoEvents(); } // the disk walk runs in the background
             Save(form, Path.Combine(dir, $"screenshot-{page.ToLowerInvariant()}.png"));
         }
 

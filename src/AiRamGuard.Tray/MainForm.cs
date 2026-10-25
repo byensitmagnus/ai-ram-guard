@@ -3,7 +3,7 @@ using AiRamGuard.Core;
 
 namespace AiRamGuard.Tray;
 
-/// <summary>The app window: sidebar navigation and four pages.</summary>
+/// <summary>The app window: sidebar navigation and five pages.</summary>
 sealed class MainForm : Form
 {
     public const string RepoUrl = "https://github.com/byensitmagnus/ai-ram-guard";
@@ -34,10 +34,11 @@ sealed class MainForm : Form
         {
             ["Overview"] = new OverviewPage(state, Navigate),
             ["Recommendations"] = new AdvicePage(state, Navigate),
+            ["Disk"] = new DiskPage(),
             ["Activity"] = new ActivityPage(state),
             ["Settings"] = new SettingsPage(state),
         };
-        _sidebar = new Sidebar(state, [("Overview", ""), ("Recommendations", ""), ("Activity", ""), ("Settings", "")], Navigate);
+        _sidebar = new Sidebar(state, [("Overview", ""), ("Recommendations", ""), ("Disk", ""), ("Activity", ""), ("Settings", "")], Navigate);
         foreach (var p in _pages.Values) { p.Visible = false; _content.Controls.Add(p); }
         Controls.Add(_content);
         Controls.Add(_sidebar);
@@ -63,6 +64,8 @@ sealed class MainForm : Form
 
     public void ShowPage(string name) => Navigate(name);
 
+    public bool DiskBusy => ((DiskPage)_pages["Disk"]).Busy;
+
     void Navigate(string name)
     {
         _current.Visible = false;
@@ -77,11 +80,11 @@ sealed class MainForm : Form
     /// <summary>The app icon at a real size: ExtractAssociatedIcon only gives 32 px, which blurs when zoomed.</summary>
     public static Bitmap? Logo(int size) => Icon.ExtractIcon(Environment.ProcessPath!, 0, size)?.ToBitmap();
 
-    /// <summary>Ctrl+1..4 pages, F5 check again, Esc close.</summary>
+    /// <summary>Ctrl+1..5 pages, F5 check again, Esc close.</summary>
     protected override bool ProcessCmdKey(ref Message msg, Keys keys)
     {
-        string[] order = ["Overview", "Recommendations", "Activity", "Settings"];
-        if (keys >= (Keys.Control | Keys.D1) && keys <= (Keys.Control | Keys.D4)) { Navigate(order[(int)(keys & Keys.KeyCode) - (int)Keys.D1]); return true; }
+        string[] order = ["Overview", "Recommendations", "Disk", "Activity", "Settings"];
+        if (keys >= (Keys.Control | Keys.D1) && keys <= (Keys.Control | Keys.D5)) { Navigate(order[(int)(keys & Keys.KeyCode) - (int)Keys.D1]); return true; }
         if (keys == Keys.F5) { _state.RunNow(false); return true; }
         if (keys == Keys.Escape) { Close(); return true; }
         return base.ProcessCmdKey(ref msg, keys);
@@ -137,6 +140,36 @@ abstract class Page : Panel
     {
         Text = text, Font = font, ForeColor = color, BackColor = Theme.Current.Surface, AutoSize = true, MaximumSize = new Size(width, 0),
     };
+
+    /// <summary>Stack rows under the title and size the card to them.</summary>
+    protected static void Fit(Card c)
+    {
+        var y = 52;
+        foreach (Control row in c.Controls)
+        {
+            if (row.Location == new Point(18, 14) && row is Label) continue; // the title
+            row.Location = new Point(20, y);
+            row.Width = c.Width - 40;
+            y += row.Height + 8;
+        }
+        c.Height = y + 12;
+    }
+
+    /// <summary>A row: text, a hint under it, and a button on the right (none when <paramref name="buttonText"/> is null).</summary>
+    protected static Control Button(string text, string hint, string? buttonText, Action onClick)
+    {
+        var t = Theme.Current;
+        var row = new Panel { Height = 52, BackColor = t.Surface };
+        var label = new Label { Text = text, AutoSize = true, Location = new Point(0, 6), ForeColor = t.Text, BackColor = t.Surface };
+        var sub = new Label { Text = hint, AutoSize = true, Location = new Point(0, 28), ForeColor = t.Muted, BackColor = t.Surface, Font = t.Small };
+        row.Controls.AddRange([label, sub]);
+        if (buttonText is null) return row;
+        var b = new FlatButton(buttonText) { BackColor = t.Surface };
+        b.Click += (_, _) => onClick();
+        row.Controls.Add(b);
+        row.Resize += (_, _) => b.Location = new Point(row.Width - b.Width, 7);
+        return row;
+    }
 }
 
 sealed class OverviewPage : Page
@@ -382,6 +415,122 @@ sealed class ActivityPage : Page
         return new(time, "\uE946", t.Muted, msg, "");
     }
 }
+/// <summary>Where AI tools write on disk, with one-click moves of caches to another drive (and back).</summary>
+sealed class DiskPage : Page
+{
+    readonly Card _card = NewCard(120);
+    readonly FlatButton _measure = new("Measure again", glyph: "");
+    IReadOnlyList<SpotUsage>? _spots;
+    bool _busy;
+
+    public bool Busy => _busy;
+
+    public DiskPage() : base("Disk", "Where AI tools and their caches write. Move a cache off the system drive; undo puts it back.")
+    {
+        _measure.Click += (_, _) => Measure();
+        Actions.Controls.Add(_measure);
+        Stack.Controls.Add(_card);
+        ShowCard("Measuring…");
+    }
+
+    public override void Reload(AppState s)
+    {
+        if (_spots is null) Measure(); // only on first view: a walk of a big temp folder takes seconds
+    }
+
+    async void Measure()
+    {
+        if (_busy) return;
+        _busy = true;
+        _measure.Text = "Measuring…";
+        IReadOnlyList<SpotUsage>? spots = null;
+        try { spots = await Task.Run(Storage.Measure); }
+        catch (Exception e) { Log.Write($"disk scan failed: {e.Message}"); } // async void: anything unhandled would crash the app
+        OnUi(() => { _spots = spots; _busy = false; _measure.Text = "Measure again"; Render(); });
+    }
+
+    /// <summary>An await resumes off the UI thread when no WinForms context is installed (the screenshot run), so hop back first.</summary>
+    void OnUi(Action a)
+    {
+        if (IsDisposed) return;
+        if (InvokeRequired) BeginInvoke(a); else a();
+    }
+
+    void ShowCard(string title, params Control[] rows)
+    {
+        foreach (Control c in _card.Controls) c.Dispose();
+        _card.Controls.Clear();
+        _card.Width = ContentWidth;
+        _card.Controls.Add(CardTitle(title));
+        _card.Controls.AddRange(rows);
+        Fit(_card);
+    }
+
+    void Render()
+    {
+        if (_spots is null) { ShowCard("Could not measure the disk. See the log."); return; }
+        var moved = Mover.History().Select(m => m.Id).ToHashSet();
+        var shown = _spots.Where(u => u.Exists || moved.Contains(u.Spot.Id)).OrderByDescending(u => u.Bytes).ToList();
+        var onSystem = shown.Where(u => u.OnSystemDrive).Sum(u => u.Bytes);
+        ShowCard($"{Theme.Size(onSystem)} on the system drive · {Theme.Size(shown.Sum(u => u.Bytes) - onSystem)} elsewhere",
+            shown.Select(u => Row(u, moved.Contains(u.Spot.Id))).ToArray());
+    }
+
+    Control Row(SpotUsage u, bool movedByUs)
+    {
+        var where = $"{u.RealPath} · {(u.OnSystemDrive ? "system drive" : $"on {u.Drive}")}";
+        var text = $"{u.Spot.Name} · {Theme.Size(u.Bytes)}";
+        if (movedByUs) return Button(text, where + " · moved by AI RAM Guard", "Undo move", () => UndoMove(u));
+        void Open() { if (Directory.Exists(u.RealPath)) MainForm.Open(u.RealPath); }
+        if (!u.Spot.Movable) return Button(text, where + $" · holds sessions: close the app, then set {u.Spot.EnvVars[0]}", "Open", Open);
+        var targets = u.OnSystemDrive ? Storage.Targets(u).OrderByDescending(d => d.AvailableFreeSpace).ToList() : [];
+        if (targets.Count == 0) return Button(text, where, "Open", Open);
+        if (targets.Count == 1) return Button(text, where, $"Move to {targets[0].Name.TrimEnd('\\')}", () => MoveTo(u, targets[0]));
+        return Button(text, where, "Move to…", () =>
+        {
+            var menu = new ContextMenuStrip { Renderer = new MenuRenderer(Theme.Current) };
+            foreach (var d in targets) menu.Items.Add($"{d.Name.TrimEnd('\\')}  ({Theme.Size(d.AvailableFreeSpace)} free)", null, (_, _) => MoveTo(u, d));
+            menu.Show(Cursor.Position);
+        });
+    }
+
+    async void MoveTo(SpotUsage u, DriveInfo d)
+    {
+        var to = Storage.TargetFolder(u.Spot, d.Name);
+        if (MessageBox.Show(FindForm(), $"Move {u.Spot.Name} ({Theme.Size(u.Bytes)}) to {to}?\n\nApps you start from now on use the new folder: restart the ones that are open. You can undo it on this page.",
+            "AI RAM Guard", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+        await RunAndReport(() => Mover.Move(u.Spot, to), $"Moving {u.Spot.Name}…");
+    }
+
+    async void UndoMove(SpotUsage u)
+    {
+        if (MessageBox.Show(FindForm(), $"Move {u.Spot.Name} back and restore {string.Join(" and ", u.Spot.EnvVars)} as it was?",
+            "AI RAM Guard", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+        await RunAndReport(() => Mover.Undo(u.Spot), $"Moving {u.Spot.Name} back…");
+    }
+
+    async Task RunAndReport(Func<MoveResult> work, string progress)
+    {
+        if (_busy) return;
+        _busy = true;
+        ShowCard(progress + " Large caches take a while.");
+        MoveResult r;
+        try { r = await Task.Run(work); }
+        catch (Exception e) { r = new(false, e.Message); }
+        OnUi(() =>
+        {
+            _busy = false;
+            MessageBox.Show(FindForm(), r.Message, "AI RAM Guard", MessageBoxButtons.OK, r.Ok ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            Measure();
+        });
+    }
+
+    protected override void Layout2()
+    {
+        if (_card.Width != ContentWidth) { _card.Width = ContentWidth; Fit(_card); }
+    }
+}
+
 sealed class SettingsPage : Page
 {
     readonly AppState _s;
@@ -398,6 +547,7 @@ sealed class SettingsPage : Page
             Toggle("Close leftover MCP servers", "Only MCP servers it saw an AI app start, once that app is gone. Never a running session.", () => g.KillOrphans, v => g.KillOrphans = v),
             Toggle("Free memory from AI apps", "Moves idle AI memory to the pagefile when RAM runs low. Apps keep running.", () => g.Trim, v => g.Trim = v),
             Toggle("Game mode", "Use the stricter limit while a fullscreen game is in front.", () => g.GameMode, v => g.GameMode = v),
+            Toggle("Lower priority in the background", "Windows frees memory from AI apps you are not using first. In game mode they also get less CPU.", () => g.LowerPriority, v => g.LowerPriority = v),
             Toggle("Notifications", "Tell me when more than 1 GB was freed.", () => s.Settings.Notify, v => s.Settings.Notify = v),
             Toggle("Start with Windows", "Runs quietly in the notification area.", () => Autostart.Enabled, v => Autostart.Enabled = v));
 
@@ -457,20 +607,6 @@ sealed class SettingsPage : Page
         return c;
     }
 
-    /// <summary>Stack rows under the title and size the card to them.</summary>
-    static void Fit(Card c)
-    {
-        var y = 52;
-        foreach (Control row in c.Controls)
-        {
-            if (row.Location == new Point(18, 14) && row is Label) continue; // the title
-            row.Location = new Point(20, y);
-            row.Width = c.Width - 40;
-            y += row.Height + 8;
-        }
-        c.Height = y + 12;
-    }
-
     protected override void Layout2()
     {
         foreach (Control c in Stack.Controls) if (c is Card card) Fit(card);
@@ -493,19 +629,6 @@ sealed class SettingsPage : Page
         stepper.ValueChanged += (_, _) => { set(stepper.Value); _s.Settings.Save(); _s.Notify(); };
         row.Controls.AddRange([label, sub, stepper]);
         row.Resize += (_, _) => stepper.Location = new Point(row.Width - stepper.Width, 9);
-        return row;
-    }
-
-    static Control Button(string text, string hint, string buttonText, Action onClick)
-    {
-        var t = Theme.Current;
-        var row = new Panel { Height = 52, BackColor = t.Surface };
-        var label = new Label { Text = text, AutoSize = true, Location = new Point(0, 6), ForeColor = t.Text, BackColor = t.Surface };
-        var sub = new Label { Text = hint, AutoSize = true, Location = new Point(0, 28), ForeColor = t.Muted, BackColor = t.Surface, Font = t.Small };
-        var b = new FlatButton(buttonText) { BackColor = t.Surface };
-        b.Click += (_, _) => onClick();
-        row.Controls.AddRange([label, sub, b]);
-        row.Resize += (_, _) => b.Location = new Point(row.Width - b.Width, 7);
         return row;
     }
 

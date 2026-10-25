@@ -10,6 +10,10 @@ Usage:
   airg clean [--dry-run]      Close orphans and trim AI apps now (ignores the threshold)
   airg watch [--min-free GB] [--interval SEC] [--no-game-mode]
                               Guard continuously (what the tray app does)
+  airg disk [--json]          Where AI tools and their caches write, and how much
+  airg move <id> <drive|folder>
+                              Move a cache to another drive, e.g. airg move npm D:
+  airg undo <id>              Move it back and restore the variable as it was
 
 https://github.com/byensitmagnus/ai-ram-guard
 """;
@@ -59,6 +63,30 @@ switch (cmd)
             if (w.Killed + w.Trimmed > 0) Console.WriteLine($"{DateTime.Now:HH:mm} {w.Reason}: closed {w.Killed}, trimmed {w.Trimmed}, freed {w.FreedBytes / 1048576:N0} MB, free {Guard.Gb(w.FreeAfterBytes)} GB");
             Thread.Sleep(TimeSpan.FromSeconds(settings.IntervalSeconds));
         }
+
+    case "disk":
+        var spots = Storage.Measure();
+        if (Has("--json"))
+            Console.WriteLine(JsonSerializer.Serialize(spots.Select(u => new { id = u.Spot.Id, name = u.Spot.Name, path = u.Path, realPath = u.RealPath, mb = u.Bytes / 1048576, u.OnSystemDrive, movable = u.Spot.Movable, variable = u.Spot.EnvVars[0] }), new JsonSerializerOptions { WriteIndented = true }));
+        else
+        {
+            foreach (var u in spots.Where(u => u.Exists).OrderByDescending(u => u.Bytes))
+                Console.WriteLine($"{u.Spot.Id,-12} {Guard.Gb(u.Bytes),6} GB  {(u.OnSystemDrive ? "system drive" : u.Drive),-12}  {u.RealPath}");
+            Console.WriteLine("\nMove one with 'airg move <id> D:'. Claude Code and Codex hold sessions and settings: they are listed, not moved.");
+        }
+        return 0;
+
+    case "move" or "undo":
+        if (args.Length < (cmd == "move" ? 3 : 2) || Storage.Find(args[1]) is not { } spot)
+        {
+            Console.WriteLine($"Usage: airg {cmd} <id>{(cmd == "move" ? " <drive|folder>" : "")}. Ids: {string.Join(", ", Storage.Known.Where(k => k.Movable).Select(k => k.Id))}");
+            return 1;
+        }
+        var target = cmd == "move" ? args[2] : "";
+        if (target.TrimEnd('\\', '/').Length == 2 && target[1] == ':') target = Storage.TargetFolder(spot, target[..2] + "\\");
+        var mr = cmd == "move" ? Mover.Move(spot, target) : Mover.Undo(spot);
+        Console.WriteLine(mr.Message);
+        return mr.Ok ? 0 : 1;
 
     default:
         Console.WriteLine(Help);

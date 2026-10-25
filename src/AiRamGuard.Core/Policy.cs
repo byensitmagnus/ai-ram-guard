@@ -9,6 +9,8 @@ public sealed class GuardSettings
     public bool GameMode { get; set; } = true;
     public bool KillOrphans { get; set; } = true;
     public bool Trim { get; set; } = true;
+    /// <summary>Background AI apps get low memory priority, so Windows frees their pages first. While a game is in front, also less CPU.</summary>
+    public bool LowerPriority { get; set; } = true;
     public int IntervalSeconds { get; set; } = 120;
     /// <summary>Per-app RAM cap by profile id, e.g. { "codex": 3072 }. Above it the app is trimmed even with plenty of free RAM.</summary>
     public Dictionary<string, int> AgentCapsMB { get; set; } = [];
@@ -18,6 +20,11 @@ public sealed class GuardSettings
 
 public sealed record Plan(IReadOnlyList<ProcessInfo> Kill, IReadOnlyList<ProcessInfo> Trim, string Reason)
 {
+    /// <summary>Processes of AI apps in the background: low memory priority. Anything lowered earlier and not in here gets restored.</summary>
+    public IReadOnlyList<ProcessInfo> Lower { get; init; } = [];
+    /// <summary>A game is in front: <see cref="Lower"/> also gets below-normal CPU priority and EcoQoS.</summary>
+    public bool LowerCpu { get; init; }
+
     public static Plan Nothing(string reason) => new([], [], reason);
 }
 
@@ -48,6 +55,12 @@ public static class Policy
             : underPressure ? $"{freeMB / 1024.0:0.0} GB free, below the {limitMB / 1024.0:0.#} GB limit{(fullscreenGame && s.GameMode ? " (game mode)" : "")}"
             : overCap.Count > 0 ? $"over cap: {string.Join(", ", overCap.Select(a => a.Profile.Name))}"
             : $"{freeMB / 1024.0:0.0} GB free, limit {limitMB / 1024.0:0.#} GB";
-        return new Plan(kill, trimAgents.SelectMany(a => a.Processes).ToList(), reason);
+        var paused = s.PausedUntil is { } u && u > (now ?? DateTime.Now); // reached only by a manual clean: it frees RAM, it doesn't resume lowering
+        var lower = s.LowerPriority && !paused;
+        return new Plan(kill, trimAgents.SelectMany(a => a.Processes).ToList(), reason)
+        {
+            Lower = lower ? candidates.SelectMany(a => a.Processes).ToList() : [],
+            LowerCpu = lower && s.GameMode && fullscreenGame,
+        };
     }
 }
