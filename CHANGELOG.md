@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2 (2026-10-25)
+
+**Fix**
+- A dark box covered the top right of the first card on every page (on Overview the *Everything else* tile). The header button panel kept its 200×100 default height and painted over the card.
+- Page scrollbars are dark in the dark theme instead of white.
+- README screenshots are now captured with `PrintWindow`, which shows controls in their real stacking order, so a bug like the one above shows up in them.
+
 ## 1.2.1 (2026-10-25)
 
 **Fix**

@@ -34,17 +34,22 @@ static class Screenshots
         return 0;
     }
 
+    /// <summary>PrintWindow, not DrawToBitmap: DrawToBitmap paints siblings in reverse z-order and hid a header panel covering a card.</summary>
     static void Save(Form f, string path)
     {
+        // PW_RENDERFULLCONTENT reads DWM's copy: paint everything, then wait for DWM to take it, or the shot is a frame old.
+        f.Refresh();
+        DwmFlush();
         using var bmp = new Bitmap(f.ClientSize.Width, f.ClientSize.Height);
-        f.DrawToBitmap(bmp, new Rectangle(Point.Empty, f.ClientSize));
-        // DrawToBitmap includes the frame; crop to the client area.
-        var offset = f.PointToScreen(Point.Empty);
-        var frame = new Point(offset.X - f.Left, offset.Y - f.Top);
-        using var full = new Bitmap(f.Width, f.Height);
-        f.DrawToBitmap(full, new Rectangle(Point.Empty, f.Size));
-        using var g = Graphics.FromImage(bmp);
-        g.DrawImage(full, new Rectangle(Point.Empty, f.ClientSize), new Rectangle(frame, f.ClientSize), GraphicsUnit.Pixel);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            var hdc = g.GetHdc();
+            try { PrintWindow(f.Handle, hdc, 0x1 | 0x2); } // PW_CLIENTONLY | PW_RENDERFULLCONTENT
+            finally { g.ReleaseHdc(hdc); }
+        }
         bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")] static extern int DwmFlush();
 }

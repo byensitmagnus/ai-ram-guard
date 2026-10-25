@@ -97,13 +97,15 @@ abstract class Page : Panel
     protected readonly FlowLayoutPanel Stack = new() { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Location = new Point(28, 92) };
     protected readonly Label Heading = new() { AutoSize = true, Location = new Point(28, 26) };
     protected readonly Label Sub = new() { AutoSize = true, Location = new Point(30, 60) };
-    protected readonly FlowLayoutPanel Actions = new() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+    // GrowAndShrink: with the default GrowOnly the panel keeps its 200×100 default size and paints over the first card.
+    protected readonly FlowLayoutPanel Actions = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
 
     protected Page(string title, string subtitle)
     {
         var t = Theme.Current;
         Dock = DockStyle.Fill;
         AutoScroll = true;
+        t.ApplyScrollbars(this);
         BackColor = t.Bg;
         Heading.Text = title;
         Heading.Font = t.Heading;
