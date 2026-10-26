@@ -6,11 +6,11 @@
 
 # AI RAM Guard: når Claude Code, Codex og MCP-servere æder din RAM
 
-**AI RAM Guard** er et gratis open source-program til Windows. Det viser, hvor meget RAM dine AI-værktøjer faktisk bruger. Det finder **dublerede og efterladte MCP-servere**, fortæller **hvilken konfigurationsfil du skal rette**, og giver hukommelsen tilbage uden at lukke det, du arbejder i.
+**AI RAM Guard** er et gratis open source-program til Windows. Det viser, hvor meget RAM dine AI-værktøjer faktisk bruger. Det finder **dublerede og efterladte MCP-servere**, **retter årsagen med ét klik** (og kan fortryde det), og giver hukommelsen tilbage uden at lukke det, du arbejder i.
 
 > Det startede med en gaming-PC med 32 GB RAM, der løb tør midt i et spil. Synderen var ikke spillet. Det var **48 processer af én MCP-server** og **25 af en anden**, startet af AI-sessioner i baggrunden.
 
-<p align="center"><img src="assets/demo.gif" alt="Rundtur i AI RAM Guard: overblik med RAM-ring og RAM pr. AI-program, anbefalinger, aktivitet og indstillinger" width="880"></p>
+<p align="center"><img src="assets/demo.gif" alt="Rundtur i AI RAM Guard: overblik med RAM-ring og RAM pr. AI-program, rettelser, disk, aktivitet og indstillinger" width="880"></p>
 
 ## Hvorfor sker det?
 
@@ -21,12 +21,12 @@ Kendte fejlrapporter, som AI RAM Guard afhjælper på din PC, indtil de er rette
 ## Det gør AI RAM Guard
 
 - 📊 **Overblik:** RAM-ring, graf over det seneste døgn og RAM pr. AI-program med MCP-servere.
-- 💡 **Anbefalinger:** finder årsagen, fx "rea-agents kører 11× under Claude, den står i `~/.claude.json`", og viser, hvad rettelsen sparer.
+- 🔧 **Rettelser:** finder årsagen og retter den. Fx kører "rea-agents 11× under Claude": **Turn off** fjerner den fra `~/.claude.json` med backup, og **Turn on again** sætter den tilbage præcis som før. Efterladte processer lukkes med ét klik, og et grådigt program får et loft. Det, kun du kan ændre (et plugin), står for sig med besked om hvor.
 - 🧹 **Rydder op:** lukker MCP-servere, som den har set et AI-program starte, når programmet er væk. Det, du selv har startet, rører den ikke.
 - 🪶 **Frigør RAM uden at lukke noget:** flytter ubrugt AI-hukommelse til swapfilen, når der er for lidt fri RAM. Programmet, du bruger, røres aldrig.
 - 🎯 **Loft pr. program**, ⏸️ **pause i en time** og 🎮 **spiltilstand** med strammere grænse, mens et spil kører i fuld skærm.
 - 🐢 **Lavere prioritet i baggrunden:** AI-programmer, du ikke bruger, giver først slip på RAM, og under spil får de også mindre CPU. Det sættes tilbage, så snart du skifter til dem.
-- 💾 **Disk:** viser, hvor AI-værktøjer og deres cache skriver, og flytter en cache væk fra systemdrevet med ét klik. Kan fortrydes.
+- 💾 **Disk:** viser, hvor AI-værktøjer og deres cache skriver. Rydder gamle temp-filer op (kun dem, ingen har rørt i 7 dage), og flytter en cache væk fra systemdrevet med ét klik. Kan fortrydes.
 - 📦 Rigtig installation uden administratorrettigheder, og kommandolinjen `airg` til scripts.
 
 ## Kom i gang
@@ -38,7 +38,7 @@ Så ligger den i Start-menuen, starter med Windows og kan fjernes under *Indstil
 
 ```text
 airg scan     RAM pr. AI-program
-airg advise   hvad du skal rette, så det ikke sker igen
+airg advise   hvad der skal rettes, så det ikke sker igen
 airg clean    ryd op nu
 airg disk     hvor AI-værktøjer fylder på disken
 ```

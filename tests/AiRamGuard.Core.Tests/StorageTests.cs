@@ -29,7 +29,7 @@ public sealed class StorageTests : IDisposable
         return v;
     }
 
-    static void Junction(string link, string target) =>
+    internal static void Junction(string link, string target) =>
         Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"") { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true })!.WaitForExit();
 
     [Fact]

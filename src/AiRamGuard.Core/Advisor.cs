@@ -2,8 +2,15 @@ namespace AiRamGuard.Core;
 
 public enum AdviceKind { Orphans, Duplicates, NpxWrapper, BigApp }
 
-/// <summary>A concrete, permanent fix the user can make, with an estimate of what it saves.</summary>
-public sealed record Advice(AdviceKind Kind, string Title, string Detail, long SavingsBytes, string? ConfigPath = null);
+/// <summary>A concrete, permanent fix, with an estimate of what it saves.</summary>
+/// <param name="Servers">The config entries that start a duplicated server: when there are any, the app can switch them off itself.</param>
+/// <param name="AgentId">The AI app it is about (for a cap).</param>
+public sealed record Advice(AdviceKind Kind, string Title, string Detail, long SavingsBytes, string? ConfigPath = null,
+    IReadOnlyList<ServerEntry>? Servers = null, string? AgentId = null)
+{
+    /// <summary>The app can do this one itself; the others need the user (a plugin setting, an npm install).</summary>
+    public bool CanFix => Kind is AdviceKind.Orphans or AdviceKind.BigApp || Servers is { Count: > 0 };
+}
 
 /// <summary>An AI app's config file, read so advice can point at the exact file to change.</summary>
 public sealed record ConfigFile(string App, string Path, string Content);
@@ -11,7 +18,9 @@ public sealed record ConfigFile(string App, string Path, string Content);
 /// <summary>Turns a report into fixes that stop the waste at the source, instead of cleaning it up forever.</summary>
 public static class Advisor
 {
-    public static IReadOnlyList<Advice> Advise(Report r, IReadOnlyList<ConfigFile> configs)
+    /// <param name="applied">Servers AI RAM Guard switched off: their copies run on until sessions close, which is not a new problem.</param>
+    /// <param name="caps">Apps that have a cap already need no cap advice.</param>
+    public static IReadOnlyList<Advice> Advise(Report r, IReadOnlyList<ConfigFile> configs, IReadOnlyList<FixRecord>? applied = null, IReadOnlyDictionary<string, int>? caps = null)
     {
         var list = new List<Advice>();
 
@@ -28,15 +37,18 @@ public static class Advisor
             var own = ConfigsFor(a.Profile.Id, configs);
             foreach (var h in a.Helpers.Where(h => h.Count >= 3 && h.Bytes - h.Bytes / h.Count >= MinSavings))
             {
+                var servers = McpServers.Find(h.Key, own);
+                if (servers.Count == 0 && (McpServers.IsOff(h.Key, own) || Term(h.Key) is { } term
+                        && (applied ?? []).Any(f => f.Entries.Any(e => e.Definition.Contains(term, StringComparison.OrdinalIgnoreCase)))))
+                    continue; // switched off already: the copies go as their sessions close
                 var config = FindConfig(h.Key, own);
-                list.Add(new Advice(AdviceKind.Duplicates,
-                    $"{h.Key} runs {h.Count}× under {a.Profile.Name}",
-                    $"Every {a.Profile.Name} session starts its own copy. Load it only in the projects that need it, or switch it off when you don't use it. Closing sessions you don't use also helps."
-                        + (config is null
-                            ? $" It isn't in a config file AI RAM Guard knows, so it probably comes from a plugin or extension: check the plugin list in {a.Profile.Name}."
-                            : $" It's configured in {config.App}: {Display(config.Path)}"),
-                    h.Bytes - h.Bytes / h.Count,
-                    config?.Path));
+                var detail = servers.Count > 0
+                    ? $"Every {a.Profile.Name} session starts its own copy. It's switched on {Describe(servers)}. Turn it off if you don't use it; you can turn it back on here."
+                    : config is null
+                        ? $"Every {a.Profile.Name} session starts its own copy. It comes from the app itself or a plugin, not from a config file, so it can only be turned off in the app."
+                        : $"Every {a.Profile.Name} session starts its own copy. It's configured in {Display(config.Path)} in a way AI RAM Guard doesn't change (comments, or an unusual layout): turn it off there.";
+                list.Add(new Advice(AdviceKind.Duplicates, $"{h.Key} runs {h.Count}× under {a.Profile.Name}", detail,
+                    h.Bytes - h.Bytes / h.Count, config?.Path, servers, a.Profile.Id));
             }
 
             foreach (var g in Analyzer.GroupHelpers(a.Processes.Where(p => p.CommandLine.Contains("npx-cli.js", StringComparison.OrdinalIgnoreCase))))
@@ -44,24 +56,35 @@ public static class Advisor
                 if (g.Count < 2 || g.Bytes < MinSavings) continue;
                 list.Add(new Advice(AdviceKind.NpxWrapper,
                     $"{g.Count} npx wrappers in front of {g.Key}",
-                    $"Started as 'npx -y {g.Key}@latest', so every copy runs an extra npx process. Install it once ('npm i -g {g.Key}') and point the config at the installed server to skip the wrapper.",
-                    g.Bytes, FindConfig(g.Key, own)?.Path));
+                    $"Each copy starts through npx, an extra process. Install it once ('npm i -g {g.Key}') and point the config at the installed server.",
+                    g.Bytes, FindConfig(g.Key, own)?.Path, AgentId: a.Profile.Id));
             }
 
             var share = (double)a.Bytes / r.Snapshot.TotalRamBytes;
-            if (share > 0.2)
+            if (share > 0.2 && caps?.ContainsKey(a.Profile.Id) != true)
                 list.Add(new Advice(AdviceKind.BigApp,
-                    $"{a.Profile.Name} uses {share:P0} of your RAM",
-                    $"Set a cap for {a.Profile.Name} in Settings. Above it, AI RAM Guard frees its idle memory even when your PC has RAM to spare.",
-                    0));
+                    $"{a.Profile.Name} uses {share * 100:0}% of your RAM",
+                    $"Give it a cap: above it, AI RAM Guard frees its idle memory even when your PC has RAM to spare.",
+                    0, AgentId: a.Profile.Id));
         }
         return list.OrderByDescending(x => x.SavingsBytes).ToList();
     }
 
+    /// <summary>"as "rea" in ~\.claude.json (for all projects, and again in 2 projects)": the names are what Turn off removes.</summary>
+    static string Describe(IReadOnlyList<ServerEntry> servers) => "as " + string.Join(", ", servers.Select(s => $"\"{s.Name}\"").Distinct()) + " in " + string.Join(" and ", servers.GroupBy(s => s.Path).Select(g =>
+    {
+        var global = g.Any(s => s.Project is null);
+        var projects = g.Count(s => s.Project is not null);
+        return Display(g.Key) + (global && projects > 0 ? $" (for all projects, and again in {projects} project{(projects > 1 ? "s" : "")})" : projects > 0 ? $" ({projects} project{(projects > 1 ? "s" : "")})" : "");
+    }));
+
+    /// <summary>The suggested cap: 15 % of the PC's RAM, whole GB, at least 1.</summary>
+    public static int SuggestedCapMB(long totalRamBytes) => Math.Max(1, (int)(totalRamBytes * 0.15 / (1L << 30))) * 1024;
+
     static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     /// <summary>"~\.claude.json": shorter, and screenshots of the app don't show the user name.</summary>
-    internal static string Display(string path) =>
+    public static string Display(string path) =>
         Home.Length > 0 && path.StartsWith(Home, StringComparison.OrdinalIgnoreCase) ? "~" + path[Home.Length..] : path;
 
     /// <summary>Below this a fix isn't worth the user's time.</summary>
@@ -85,18 +108,37 @@ public static class Advisor
     /// The config whose MCP server section starts this helper: "@scope/name" is searched as "name", "rea.mjs" as "rea".
     /// Only server sections count; app configs also hold usage stats and history that mention the same names.
     /// </summary>
-    internal static ConfigFile? FindConfig(string helperKey, IReadOnlyList<ConfigFile> configs)
+    internal static ConfigFile? FindConfig(string helperKey, IReadOnlyList<ConfigFile> configs) =>
+        Term(helperKey) is not { } term ? null : configs.FirstOrDefault(c => McpSections(c).Any(s => Mentions(s, term)));
+
+    /// <summary>
+    /// What a config says for this helper: "@scope/name" → "name", "rea.mjs" → "rea".
+    /// Null when too short or too common to tell servers apart ("index.js" is in every locally built server).
+    /// </summary>
+    internal static string? Term(string helperKey)
     {
         var term = helperKey.Split('/')[^1];
         var dot = term.LastIndexOf('.');
         if (dot > 0) term = term[..dot];
-        if (term.Length < 3) return null;
-        return configs.FirstOrDefault(c => McpSections(c).Any(s => s.Contains(term, StringComparison.OrdinalIgnoreCase)));
+        return term.Length < 3 || Generic.Contains(term) ? null : term;
     }
+
+    static readonly HashSet<string> Generic = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "index", "server", "main", "app", "cli", "mcp", "dist", "run", "start", "launch", "bin", "src", "lib",
+        "node", "python", "python3", "py", "uv", "uvx", "npx", "npm", "pnpm", "bun", "deno", "docker", "cmd", "bash", "pwsh", "powershell", "java", "dotnet",
+    };
+
+    /// <summary>The term as a whole name or path part: "rea" in "rea.mjs" or "tools/rea", not in "already" or "create".</summary>
+    internal static bool Mentions(string text, string term) =>
+        System.Text.RegularExpressions.Regex.IsMatch(text, $@"(?<![A-Za-z0-9_-]){System.Text.RegularExpressions.Regex.Escape(term)}(?![A-Za-z0-9_-])", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     static readonly System.Text.RegularExpressions.Regex JsonServers = new(@"""(?:mcpServers|servers)""\s*:\s*\{", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    /// <summary>TOML: the [mcp_servers.*] tables. JSON: every "mcpServers"/"servers" object, matched by braces.</summary>
+    /// <summary>
+    /// TOML: the [mcp_servers.*] tables. JSON: every "mcpServers"/"servers" object, matched by braces.
+    /// Without the section's own name: a helper called "server.mjs" would otherwise match every one.
+    /// </summary>
     internal static IEnumerable<string> McpSections(ConfigFile c)
     {
         if (c.Path.EndsWith(".toml", StringComparison.OrdinalIgnoreCase))
@@ -107,7 +149,7 @@ public static class Advisor
             {
                 var t = line.Trim();
                 if (t.StartsWith('[')) inServer = t.StartsWith("[mcp_servers", StringComparison.OrdinalIgnoreCase);
-                if (inServer) sb.AppendLine(line);
+                if (inServer) sb.AppendLine(t.StartsWith('[') ? t["[mcp_servers".Length..] : line);
             }
             yield return sb.ToString();
             yield break;
@@ -125,7 +167,7 @@ public static class Advisor
                 else if (ch == '{') depth++;
                 else if (ch == '}' && --depth == 0) break;
             }
-            yield return c.Content[m.Index..Math.Min(i + 1, c.Content.Length)];
+            yield return c.Content[(m.Index + m.Length - 1)..Math.Min(i + 1, c.Content.Length)];
         }
     }
 }

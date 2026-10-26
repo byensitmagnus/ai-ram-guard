@@ -16,5 +16,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AiRamGuard.Core\AiRamGuard.Core.csproj" />
+    <InternalsVisibleTo Include="AiRamGuard.Core.Tests" />
   </ItemGroup>
 </Project>

@@ -2,6 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <IsPackable>false</IsPackable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
@@ -10,5 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\AiRamGuard.Core\AiRamGuard.Core.csproj" />
+    <ProjectReference Include="..\..\src\AiRamGuard.Tray\AiRamGuard.Tray.csproj" />
   </ItemGroup>
 </Project>

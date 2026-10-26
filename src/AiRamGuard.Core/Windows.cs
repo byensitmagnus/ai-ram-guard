@@ -14,6 +14,11 @@ public static class Paths
     public static string LineageFile { get; } = Path.Combine(DataDir, "lineage.json");
     /// <summary>Undo records for moved caches. In ConfigDir with the settings: losing it would lose the way back.</summary>
     public static string MovesFile { get; } = Path.Combine(ConfigDir, "moves.json");
+    /// <summary>
+    /// MCP servers switched off, and how to switch them back on. Config backups go in "backups" next to it.
+    /// On this PC only (not roaming): both can hold a server's env, API keys included.
+    /// </summary>
+    public static string FixesFile { get; } = Path.Combine(DataDir, "fixes.json");
 }
 
 /// <summary>Reads processes and memory from Windows.</summary>

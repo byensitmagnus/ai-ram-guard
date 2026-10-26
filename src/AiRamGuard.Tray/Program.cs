@@ -12,6 +12,7 @@ static class Program
         System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.CurrentUICulture = new("en-US");
 
         if (args is ["--screenshot", var dir]) return Screenshots.Render(dir);
+        if (args is ["--screenshot", var lightDir, "--light"]) { Theme.ForceDark = false; return Screenshots.Render(lightDir); }
         if (args is ["--uninstall"]) { Installer.ConfirmUninstall(); return 0; }
         if (args is ["--uninstall", "--quiet"]) { Installer.Uninstall(); return 0; } // package managers: no dialog
         if (args is ["--install"]) { Installer.Install(); return 0; } // silent install for scripts and package managers

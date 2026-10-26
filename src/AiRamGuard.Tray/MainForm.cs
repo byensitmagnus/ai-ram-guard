@@ -9,6 +9,7 @@ sealed class MainForm : Form
     public const string RepoUrl = "https://github.com/byensitmagnus/ai-ram-guard";
     public const string SiteUrl = "https://byens-it.dk";
     public static readonly string Version = typeof(MainForm).Assembly.GetName().Version?.ToString(3) ?? "";
+    static readonly string[] Order = ["Overview", "Fixes", "Disk", "Activity", "Settings"];
 
     readonly AppState _state;
     readonly Panel _content = new() { Dock = DockStyle.Fill };
@@ -33,17 +34,18 @@ sealed class MainForm : Form
         _pages = new()
         {
             ["Overview"] = new OverviewPage(state, Navigate),
-            ["Recommendations"] = new AdvicePage(state, Navigate),
+            ["Fixes"] = new FixesPage(state),
             ["Disk"] = new DiskPage(),
             ["Activity"] = new ActivityPage(state),
             ["Settings"] = new SettingsPage(state),
         };
-        _sidebar = new Sidebar(state, [("Overview", ""), ("Recommendations", ""), ("Disk", ""), ("Activity", ""), ("Settings", "")], Navigate);
+        _sidebar = new Sidebar(state, [("Overview", "\uE80F"), ("Fixes", "\uE90F"), ("Disk", "\uEDA2"), ("Activity", "\uE81C"), ("Settings", "\uE713")], Navigate);
         foreach (var p in _pages.Values) { p.Visible = false; _content.Controls.Add(p); }
         Controls.Add(_content);
         Controls.Add(_sidebar);
         _current = _pages["Overview"];
         Navigate("Overview");
+        _sidebar.UpdateBadges();
 
         _state.Changed += OnChanged;
         FormClosed += (_, _) => _state.Changed -= OnChanged;
@@ -83,22 +85,24 @@ sealed class MainForm : Form
     /// <summary>Ctrl+1..5 pages, F5 check again, Esc close.</summary>
     protected override bool ProcessCmdKey(ref Message msg, Keys keys)
     {
-        string[] order = ["Overview", "Recommendations", "Disk", "Activity", "Settings"];
-        if (keys >= (Keys.Control | Keys.D1) && keys <= (Keys.Control | Keys.D5)) { Navigate(order[(int)(keys & Keys.KeyCode) - (int)Keys.D1]); return true; }
+        if (keys >= (Keys.Control | Keys.D1) && keys <= (Keys.Control | Keys.D5)) { Navigate(Order[(int)(keys & Keys.KeyCode) - (int)Keys.D1]); return true; }
         if (keys == Keys.F5) { _state.RunNow(false); return true; }
         if (keys == Keys.Escape) { Close(); return true; }
         return base.ProcessCmdKey(ref msg, keys);
     }
 }
 
-/// <summary>A scrollable page with a header and a vertical stack of cards.</summary>
+/// <summary>
+/// A scrollable page: a header (title, one line, at most one primary button) and a column of cards.
+/// Spacing on a 4 px grid: 32 page gutter, 24 inside a card, 16 between cards.
+/// </summary>
 abstract class Page : Panel
 {
-    protected readonly FlowLayoutPanel Stack = new() { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Location = new Point(28, 92) };
-    protected readonly Label Heading = new() { AutoSize = true, Location = new Point(28, 26) };
-    protected readonly Label Sub = new() { AutoSize = true, Location = new Point(30, 60) };
+    protected const int Gutter = 32, Pad = 24, Gap = 16, HeaderTop = 28;
+    protected readonly FlowLayoutPanel Stack = new() { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Location = new Point(Gutter, HeaderTop + 64 + 24) };
     // GrowAndShrink: with the default GrowOnly the panel keeps its 200×100 default size and paints over the first card.
     protected readonly FlowLayoutPanel Actions = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+    readonly PageHeader _header = new() { Location = new Point(Gutter, HeaderTop) };
 
     protected Page(string title, string subtitle)
     {
@@ -107,20 +111,25 @@ abstract class Page : Panel
         AutoScroll = true;
         t.ApplyScrollbars(this);
         BackColor = t.Bg;
-        Heading.Text = title;
-        Heading.Font = t.Heading;
-        Heading.ForeColor = t.Text;
-        Sub.Text = subtitle;
-        Sub.ForeColor = t.Muted;
-        Controls.AddRange([Heading, Sub, Actions, Stack]);
+        _header.BackColor = t.Bg;
+        _header.Set(title, subtitle);
+        Actions.SizeChanged += (_, _) => PlaceHeader();
+        Actions.ControlAdded += (_, e) => e.Control!.Margin = new Padding(Actions.Controls.Count > 1 ? 10 : 0, 0, 0, 0);
+        Controls.AddRange([_header, Actions, Stack]);
     }
 
-    protected int ContentWidth => Math.Max(560, ClientSize.Width - 56);
+    protected int ContentWidth => Math.Max(560, ClientSize.Width - 2 * Gutter);
+
+    void PlaceHeader()
+    {
+        Actions.Location = new Point(ClientSize.Width - Actions.Width - Gutter, HeaderTop - 1 + AutoScrollPosition.Y);
+        _header.Width = Math.Max(200, Actions.Left - Gutter - 16);
+    }
 
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        Actions.Location = new Point(ClientSize.Width - Actions.Width - 28, 30);
+        PlaceHeader();
         foreach (Control c in Stack.Controls) c.Width = ContentWidth;
         Layout2();
     }
@@ -130,221 +139,364 @@ abstract class Page : Panel
 
     public abstract void Reload(AppState s);
 
-    protected static Card NewCard(int height) => new() { Height = height, Margin = new Padding(0, 0, 0, 16) };
+    protected static Card NewCard(int height) => new() { Height = height, Margin = new Padding(0, 0, 0, Gap) };
 
-    protected static Label CardTitle(string text) => new()
+    protected static void Replace(FlowLayoutPanel panel, IEnumerable<Control> controls)
     {
-        Text = text, AutoSize = true, Font = Theme.Current.Section, ForeColor = Theme.Current.Text,
-        BackColor = Theme.Current.Surface, Location = new Point(18, 14),
-    };
-
-    protected static Label Wrapping(string text, Font font, Color color, int width) => new()
-    {
-        Text = text, Font = font, ForeColor = color, BackColor = Theme.Current.Surface, AutoSize = true, MaximumSize = new Size(width, 0),
-    };
-
-    /// <summary>Stack rows under the title and size the card to them.</summary>
-    protected static void Fit(Card c)
-    {
-        var y = 52;
-        foreach (Control row in c.Controls)
-        {
-            if (row.Location == new Point(18, 14) && row is Label) continue; // the title
-            row.Location = new Point(20, y);
-            row.Width = c.Width - 40;
-            y += row.Height + 8;
-        }
-        c.Height = y + 12;
+        var old = panel.Controls.Cast<Control>().ToList();
+        panel.Controls.Clear();
+        foreach (var c in old) c.Dispose();
+        panel.Controls.AddRange(controls.ToArray());
     }
 
-    /// <summary>A row: text, a hint under it, and a button on the right (none when <paramref name="buttonText"/> is null).</summary>
-    protected static Control Button(string text, string hint, string? buttonText, Action onClick)
+    protected static TextBlock CardTitle(string text) =>
+        new(text, Theme.Current.Section, Theme.Current.Text, Theme.Current.Surface) { Location = new Point(Pad, Pad - 2), Width = 600, Tag = "title" };
+
+    /// <summary>A small heading between cards: "Needs you", "Done".</summary>
+    protected Control Section(string title, string hint)
+    {
+        var t = Theme.Current;
+        var p = new Panel { Height = 52, Width = ContentWidth, BackColor = t.Bg, Margin = new Padding(0, 8, 0, 4) };
+        p.Controls.Add(new TextBlock(title, t.Bold, t.Text, t.Bg) { Location = new Point(2, 4), Width = p.Width, Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top });
+        p.Controls.Add(new TextBlock(hint, t.Small, t.Muted, t.Bg) { Location = new Point(2, 26), Width = p.Width, Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top });
+        return p;
+    }
+
+    /// <summary>Stack rows under the title, with a divider between them, and size the card to them.</summary>
+    protected static void Fit(Card c)
+    {
+        var rows = c.Controls.Cast<Control>().Where(r => r.Tag as string != "title").ToList();
+        foreach (Control title in c.Controls) if (title.Tag as string == "title") title.Width = c.Width - 2 * Pad;
+        var y = rows.Count < c.Controls.Count ? Pad + 40 : Pad - 4;
+        var lines = new List<int>();
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (i > 0) { lines.Add(y + 8); y += 17; }
+            rows[i].Location = new Point(Pad, y);
+            rows[i].Width = c.Width - 2 * Pad;
+            y += rows[i].Height;
+        }
+        c.Dividers = [.. lines];
+        c.Height = y + Pad - 8;
+    }
+
+    /// <summary>A row: text, a hint under it, and up to two buttons on the right.</summary>
+    protected static Control Button(string text, string hint, string? buttonText, Action onClick, (string Text, Action OnClick)? second = null)
     {
         var t = Theme.Current;
         var row = new Panel { Height = 52, BackColor = t.Surface };
-        var label = new Label { Text = text, AutoSize = true, Location = new Point(0, 6), ForeColor = t.Text, BackColor = t.Surface };
-        var sub = new Label { Text = hint, AutoSize = true, Location = new Point(0, 28), ForeColor = t.Muted, BackColor = t.Surface, Font = t.Small };
+        var label = new TextBlock(text, t.Body, t.Text, t.Surface) { Location = new Point(0, 7) };
+        var sub = new TextBlock(hint, t.Small, t.Muted, t.Surface) { Location = new Point(0, 29) };
         row.Controls.AddRange([label, sub]);
-        if (buttonText is null) return row;
-        var b = new FlatButton(buttonText) { BackColor = t.Surface };
-        b.Click += (_, _) => onClick();
-        row.Controls.Add(b);
-        row.Resize += (_, _) => b.Location = new Point(row.Width - b.Width, 7);
+        var buttons = new List<FlatButton>();
+        if (buttonText is not null) buttons.Add(new FlatButton(buttonText) { BackColor = t.Surface });
+        if (second is { } s) buttons.Add(new FlatButton(s.Text) { BackColor = t.Surface });
+        if (buttons.Count > 0) buttons[0].Click += (_, _) => onClick();
+        if (buttons.Count > 1) buttons[1].Click += (_, _) => second!.Value.OnClick();
+        row.Controls.AddRange(buttons.ToArray());
+        row.Resize += (_, _) =>
+        {
+            var x = row.Width;
+            foreach (var b in buttons) { x -= b.Width; b.Location = new Point(x, 7); x -= 10; }
+            label.Width = sub.Width = Math.Max(100, x - 16);
+        };
         return row;
     }
 }
 
 sealed class OverviewPage : Page
 {
-    readonly RingGauge _ring = new() { Size = new Size(230, 230) };
-    readonly StatTile _ai = new(), _other = new(), _freed = new(), _orphans = new();
-    readonly Label _legend = new() { AutoSize = true };
+    const int Ring = 208, Col = Pad + Ring + 40;
+    readonly RingGauge _ring = new() { Size = new Size(Ring, Ring), Location = new Point(Pad, Pad) };
+    readonly TextBlock _status, _headline, _sub, _listTitle;
+    readonly StatTile _free = new(), _save = new();
+    readonly FlatButton _clean = new("Free RAM now", primary: true, glyph: "\uE945"), _fixes = new("See fixes", glyph: "\uE90F"), _pause = new("Pause 1 h", glyph: "\uE769");
     readonly HistoryChart _chart = new();
     readonly AppList _apps = new();
-    readonly Card _top = NewCard(272), _hist = NewCard(300), _list = NewCard(120);
-    readonly FlatButton _clean = new("Free RAM now", primary: true, glyph: ""), _pause = new("Pause 1 h", glyph: "");
-    readonly Label _status = new() { AutoSize = true };
-    readonly Label _listTitle = CardTitle("AI apps");
+    readonly Card _hero = NewCard(256), _list = NewCard(120), _hist = NewCard(300);
     readonly ToolTip _tips = new();
 
     public OverviewPage(AppState s, Action<string> navigate) : base("Overview", "How much RAM your AI tools use right now.")
     {
         var t = Theme.Current;
         _clean.Click += (_, _) => s.RunNow(true);
+        _fixes.Click += (_, _) => navigate("Fixes");
         _pause.Click += (_, _) => s.Pause(s.Paused ? null : TimeSpan.FromHours(1));
-        _pause.Margin = new Padding(0, 0, 10, 0);
-        Actions.Controls.AddRange([_pause, _clean]);
+        Actions.Controls.Add(_pause);
 
-        _ring.BackColor = t.Surface;
-        _ring.Location = new Point(22, 20);
-        foreach (var tile in new[] { _ai, _other, _freed, _orphans }) { tile.BackColor = t.Surface; _top.Controls.Add(tile); }
-        _legend.BackColor = t.Surface;
-        _legend.ForeColor = t.Muted;
-        _legend.Font = t.Small;
-        _status.BackColor = t.Surface;
-        _status.Font = t.Bold;
-        _top.Controls.AddRange([_ring, _legend, _status]);
+        _status = new TextBlock("", t.Small, t.Good, t.Surface);
+        _headline = new TextBlock("Scanning…", t.Title, t.Text, t.Surface);
+        _sub = new TextBlock("", t.Body, t.Muted, t.Surface);
+        _ring.BackColor = _free.BackColor = _save.BackColor = _clean.BackColor = _fixes.BackColor = t.Surface;
+        _hero.Controls.AddRange([_ring, _status, _headline, _sub, _free, _save, _clean, _fixes]);
+
+        // The apps come before the graph: what uses the RAM now matters more than how it went.
+        _listTitle = CardTitle("AI apps");
+        _apps.BackColor = t.Surface;
+        _apps.Location = new Point(Pad, Pad + 40);
+        _list.Controls.AddRange([_listTitle, _apps]);
+        _list.Resize += (_, _) => { _apps.Width = _list.Width - 2 * Pad; _listTitle.Width = _apps.Width; };
 
         _chart.BackColor = t.Surface;
-        _chart.Location = new Point(14, 18);
+        _chart.Location = new Point(Pad - 4, Pad - 6);
         _hist.Controls.Add(_chart);
-        _hist.Resize += (_, _) => _chart.Size = new Size(_hist.Width - 28, _hist.Height - 32);
+        _hist.Resize += (_, _) => _chart.Size = new Size(_hist.Width - 2 * Pad + 8, _hist.Height - Pad - 12);
 
-        _list.Controls.Add(_listTitle);
         _tips.SetToolTip(_clean, "Close leftovers and free idle AI memory now, whatever the limit. Also in the tray menu.");
         _tips.SetToolTip(_pause, "Stop automatic rounds for an hour. \"Free RAM now\" still works.");
         _tips.SetToolTip(_ring, "Brand colour: AI apps. Grey: everything else in use. Empty: free RAM.");
-        var more = new LinkLabel { Text = "See how to fix the waste →", AutoSize = true, BackColor = t.Surface, LinkColor = t.BrandText, ActiveLinkColor = t.BrandText, LinkBehavior = LinkBehavior.HoverUnderline };
-        more.LinkClicked += (_, _) => navigate("Recommendations");
-        _list.Controls.Add(more);
-        _apps.BackColor = t.Surface;
-        _apps.Location = new Point(18, 54);
-        _list.Controls.Add(_apps);
-        _list.Resize += (_, _) => { _apps.Width = _list.Width - 36; more.Location = new Point(_list.Width - more.Width - 20, 18); };
-
-        Stack.Controls.AddRange([_top, _hist, _list]);
+        Stack.Controls.AddRange([_hero, _list, _hist]);
     }
 
     protected override void Layout2()
     {
-        var x = 280;
-        var w = (_top.Width - x - 24) / 2;
-        _ai.SetBounds(x, 26, w, 86);
-        _other.SetBounds(x + w, 26, w, 86);
-        _freed.SetBounds(x, 128, w, 86);
-        _orphans.SetBounds(x + w, 128, w, 86);
-        _status.Location = new Point(x, 226);
-        _legend.Location = new Point(x + 140, 229);
+        var w = _hero.Width - Col - Pad;
+        _status.SetBounds(Col, 34, w, 18);
+        _headline.SetBounds(Col, 58, w, 30);
+        _sub.SetBounds(Col, 92, w, 20);
+        var tile = Math.Min(240, (w - 24) / 2);
+        _free.SetBounds(Col, 132, tile, 58);
+        _save.SetBounds(Col + tile + 24, 132, tile, 58);
+        _clean.Location = new Point(Col, 196);
+        _fixes.Location = new Point(_clean.Right + 12, 196);
+        _hero.Height = Math.Max(Pad + Ring + Pad, _clean.Bottom + Pad);
     }
 
     public override void Reload(AppState s)
     {
         var t = Theme.Current;
         _pause.Text = s.Paused ? "Resume" : "Pause 1 h";
-        _pause.Glyph = s.Paused ? "" : "";
+        _pause.Glyph = s.Paused ? "\uE768" : "\uE769";
         _clean.Text = s.Busy ? "Working…" : "Free RAM now";
-        _status.Text = $"● {s.StatusText}";
+        _status.Text = $"● {s.StatusText}" + (s.LastRun == default ? "" : $"  ·  checked {s.LastRun:HH:mm}  ·  every {s.Settings.Guard.IntervalSeconds / 60.0:0.#} min");
         _status.ForeColor = s.Paused ? t.Warn : t.Good;
-        _legend.Text = s.LastRun == default ? "" : $"Last check {s.LastRun:HH:mm:ss} · every {s.Settings.Guard.IntervalSeconds / 60.0:0.#} min";
         _chart.Set(s.History.Samples);
+        _fixes.Visible = s.Advice.Count > 0;
+        _fixes.Text = s.Advice.Count == 1 ? "See the fix" : $"See {s.Advice.Count} fixes";
 
-        if (s.Report is not { } r) return;
-        var snap = r.Snapshot;
-        var used = snap.TotalRamBytes - snap.FreeRamBytes;
-        _ring.Set(snap.TotalRamBytes, r.AiBytes, snap.FreeRamBytes);
-        var lowMB = s.GameActive && s.Settings.Guard.GameMode ? s.Settings.Guard.GameModeMinFreeMB : s.Settings.Guard.MinFreeMB;
-        _ai.Set("Free RAM", Theme.Size(snap.FreeRamBytes), $"of {Theme.Size(snap.TotalRamBytes)} installed · limit {lowMB / 1024} GB",
-            snap.FreeRamBytes >> 20 < lowMB ? t.Warn : t.Good);
-        _other.Set("Everything else", Theme.Size(Math.Max(0, used - r.AiBytes)), "Windows, games, browsers …");
-        _listTitle.Text = $"AI apps · {r.Agents.Sum(a => a.Processes.Count)} processes";
-        _freed.Set("Freed by AI RAM Guard", Theme.Size(s.Stats.FreedMB << 20), $"since {s.Stats.Since:d MMM yyyy}");
-        _orphans.Set("Leftovers right now", r.Orphans.Count == 0 ? "None" : $"{r.Orphans.Count} · {Theme.Size(r.Orphans.Sum(o => o.WorkingSetBytes))}",
-            $"{s.Stats.OrphansClosed} closed so far", r.Orphans.Count > 0 ? t.Warn : t.Good);
-        _apps.Set(r.Agents, s.Settings.Guard.AgentCapsMB, snap.TotalRamBytes);
-        _list.Height = _apps.Height + 76;
+        if (s.Report is { } r)
+        {
+            var snap = r.Snapshot;
+            var used = snap.TotalRamBytes - snap.FreeRamBytes;
+            _ring.Set(snap.TotalRamBytes, r.AiBytes, snap.FreeRamBytes);
+            _headline.Text = $"AI apps use {Theme.Size(r.AiBytes)}";
+            _sub.Text = $"{(double)r.AiBytes / snap.TotalRamBytes:P0} of your {Theme.Size(snap.TotalRamBytes)}. Windows, games and everything else use {Theme.Size(Math.Max(0, used - r.AiBytes))}.";
+            var lowMB = s.GameActive && s.Settings.Guard.GameMode ? s.Settings.Guard.GameModeMinFreeMB : s.Settings.Guard.MinFreeMB;
+            _free.Set(Theme.Size(snap.FreeRamBytes), $"free · it steps in below {lowMB / 1024} GB", snap.FreeRamBytes >> 20 < lowMB ? t.Warn : t.Good);
+            var saves = s.Advice.Sum(a => a.SavingsBytes);
+            if (s.Advice.Count == 0) _save.Set("All clear", "no duplicates, no leftovers", t.Good);
+            else if (saves > 0) _save.Set($"~{Theme.Size(saves)}", $"{s.Advice.Count} fix{(s.Advice.Count == 1 ? "" : "es")} could save", t.BrandText);
+            else _save.Set($"{s.Advice.Count}", s.Advice.Count == 1 ? "thing to check" : "things to check", t.BrandText);
+            _listTitle.Text = $"AI apps  ·  {r.Agents.Sum(a => a.Processes.Count)} processes";
+            _apps.Set(r.Agents, s.Settings.Guard.AgentCapsMB, snap.TotalRamBytes);
+            _list.Height = Pad + 40 + _apps.Height + Pad - 8;
+        }
         Layout2();
     }
 }
 
-sealed class AdvicePage : Page
+/// <summary>Problems with a button that solves them. What the app can't change itself is listed apart, and what it changed can be undone.</summary>
+sealed class FixesPage : Page
 {
-    readonly Action<string> _navigate;
+    readonly AppState _s;
+    readonly FlatButton _all = new("Fix all", primary: true, glyph: "\uE90F"), _check = new("Check again", glyph: "\uE72C");
     string _shown = "";
+    bool _busy;
 
-    public AdvicePage(AppState s, Action<string> navigate) : base("Recommendations", "Fix the cause, so the RAM never gets used up in the first place.")
+    public FixesPage(AppState s) : base("Fixes", "Stop the waste at the source. Whatever AI RAM Guard changes, you can undo here.")
     {
-        _navigate = navigate;
-        var refresh = new FlatButton("Check again", glyph: "");
-        refresh.Click += (_, _) => s.RunNow(false);
-        Actions.Controls.Add(refresh);
+        _s = s;
+        _check.Click += (_, _) => s.RunNow(false);
+        _all.Click += (_, _) => FixAll();
+        Actions.Controls.AddRange([_check, _all]);
     }
 
     public override void Reload(AppState s)
     {
-        var key = string.Join("|", s.Advice.Select(a => a.Title + a.SavingsBytes / (50 << 20)));
+        var fixable = s.Advice.Where(a => a.CanFix).ToList();
+        _all.Visible = fixable.Count > 1; // with one, its own button is the action
+        _all.Text = $"Fix all ({fixable.Count})";
+        var key = string.Join("|", s.Advice.Select(a => a.Title + a.SavingsBytes / (50 << 20))) + "#" + string.Join(",", s.Fixed.Select(f => f.Id)) + _busy;
         if (key == _shown && Stack.Controls.Count > 0) return; // avoid flicker when nothing meaningful changed
         _shown = key;
-        Stack.SuspendLayout();
-        foreach (Control c in Stack.Controls) c.Dispose();
-        Stack.Controls.Clear();
 
-        if (s.Advice.Count == 0)
+        var cards = new List<Control>();
+        var needsYou = s.Advice.Where(a => !a.CanFix).ToList();
+        if (fixable.Count == 0) cards.Add(AllClear(needsYou.Count > 0));
+        cards.AddRange(fixable.Select(a => Build(a, primary: fixable.Count == 1)));
+        if (needsYou.Count > 0)
         {
-            var ok = NewCard(110);
-            ok.Width = ContentWidth;
-            ok.Controls.Add(CardTitle("✓  Nothing to fix"));
-            ok.Controls.Add(new Label { Text = "No duplicated MCP servers, no leftovers. Your AI tools are behaving.", AutoSize = true, Location = new Point(20, 52), ForeColor = Theme.Current.Muted, BackColor = Theme.Current.Surface });
-            Stack.Controls.Add(ok);
+            cards.Add(Section("Needs you", "AI RAM Guard can't change these itself. Each says where to do it."));
+            cards.AddRange(needsYou.Select(a => Build(a, primary: false)));
         }
-        foreach (var a in s.Advice) Stack.Controls.Add(Build(a, s));
+        if (s.Fixed.Count > 0)
+        {
+            cards.Add(Section("Turned off", "New sessions start without these. Sessions that are open keep their copy until you close them."));
+            cards.Add(Done(s.Fixed));
+        }
+        Stack.SuspendLayout();
+        Replace(Stack, cards);
         Stack.ResumeLayout();
     }
 
-    Card Build(Advice a, AppState s)
+    Card AllClear(bool rest)
     {
         var t = Theme.Current;
-        var card = NewCard(100);
+        var card = NewCard(Pad + 40 + Pad);
+        card.Width = ContentWidth;
+        card.Controls.Add(new IconCircle("\uE73E", t.Good) { BackColor = t.Surface, Location = new Point(Pad, Pad) });
+        card.Controls.Add(new TextBlock(rest ? "Nothing AI RAM Guard can fix by itself" : "Nothing to fix", t.Section, t.Text, t.Surface) { Location = new Point(Pad + 56, Pad - 1), Width = 640 });
+        card.Controls.Add(new TextBlock(rest ? "What's left is below, with where to change it." : "No duplicated MCP servers, no leftovers. Your AI tools are behaving.", t.Body, t.Muted, t.Surface) { Location = new Point(Pad + 56, Pad + 24), Width = 640 });
+        return card;
+    }
+
+    Card Build(Advice a, bool primary)
+    {
+        var t = Theme.Current;
+        const int x = Pad + 40 + 18;
+        var card = NewCard(124);
         card.Width = ContentWidth;
         var (glyph, color) = a.Kind switch
         {
-            AdviceKind.Orphans => ("", t.Warn),
-            AdviceKind.Duplicates => ("", Theme.Brand),
-            AdviceKind.NpxWrapper => ("", Theme.Brand),
-            _ => ("", t.Muted),
+            AdviceKind.Orphans => ("\uE74D", t.Warn),
+            AdviceKind.Duplicates => ("\uE8C8", a.CanFix ? t.BrandText : t.Muted),
+            AdviceKind.NpxWrapper => ("\uE943", t.Muted),
+            _ => ("\uE9D9", t.BrandText),
         };
-        var icon = new Label { Text = glyph, Font = new Font(Theme.IconFont, 16f), ForeColor = color, BackColor = t.Surface, AutoSize = true, Location = new Point(20, 20) };
-        var title = new Label { Text = a.Title, Font = t.Section, ForeColor = t.Text, BackColor = t.Surface, AutoSize = true, Location = new Point(60, 18) };
-        var detail = Wrapping(a.Detail, t.Body, t.Muted, Math.Min(640, ContentWidth - 260));
-        detail.Location = new Point(60, 48);
+        var icon = new IconCircle(glyph, color) { BackColor = t.Surface, Location = new Point(Pad, Pad) };
+        var title = new TextBlock(a.Title, t.Section, t.Text, t.Surface) { Location = new Point(x, Pad) };
+        var detail = new TextBlock(a.Detail, t.Body, t.Muted, t.Surface) { Wrap = true, Location = new Point(x, Pad + 30) };
         card.Controls.AddRange([icon, title, detail]);
+        var save = a.SavingsBytes > 0 ? new Pill($"saves ~{Theme.Size(a.SavingsBytes)}", t.Good, Color.FromArgb(t.Dark ? 40 : 30, t.Good)) { BackColor = t.Surface } : null;
+        if (save is not null) card.Controls.Add(save);
+        var action = ActionFor(a, primary);
+        if (action is not null) card.Controls.Add(action);
 
-        if (a.SavingsBytes > 0)
+        void Place()
         {
-            var save = new Pill($"saves ~{Theme.Size(a.SavingsBytes)}", t.Good, Color.FromArgb(t.Dark ? 40 : 30, t.Good)) { BackColor = t.Surface };
-            card.Controls.Add(save);
-            card.Resize += (_, _) => save.Location = new Point(card.Width - save.Width - 20, 16);
+            var right = Math.Max(action?.Width ?? 0, save?.Width ?? 0) + 24;
+            title.Width = card.Width - x - right - Pad;
+            detail.Width = Math.Min(660, card.Width - x - right - Pad);
+            if (save is not null) save.Location = new Point(card.Width - save.Width - Pad, Pad);
+            var h = Math.Max(action is null ? Pad + 40 + Pad : 124, detail.Bottom + Pad);
+            if (card.Height != h) card.Height = h;
+            if (action is not null) action.Location = new Point(card.Width - action.Width - Pad, card.Height - action.Height - Pad);
         }
+        card.Resize += (_, _) => Place();
+        Place();
+        return card;
+    }
 
-        FlatButton? action = a.Kind switch
+    FlatButton? ActionFor(Advice a, bool primary)
+    {
+        FlatButton? b = a.Kind switch
         {
-            AdviceKind.Orphans => new FlatButton("Close them now", primary: true),
-            AdviceKind.BigApp => new FlatButton("Set a cap"),
+            AdviceKind.Orphans => new FlatButton("Close them", primary),
+            AdviceKind.BigApp when _s.Report is { } r => new FlatButton($"Cap at {Advisor.SuggestedCapMB(r.Snapshot.TotalRamBytes) / 1024} GB", primary),
+            AdviceKind.Duplicates when a.CanFix => new FlatButton("Turn off", primary, glyph: "\uE7E8"),
             _ when a.ConfigPath is not null => new FlatButton("Open config"),
             _ => null,
         };
-        if (action is not null)
+        if (b is null) return null;
+        b.BackColor = Theme.Current.Surface;
+        b.Click += async (_, _) =>
         {
-            action.Click += (_, _) =>
-            {
-                if (a.Kind == AdviceKind.Orphans) s.RunNow(true);
-                else if (a.Kind == AdviceKind.BigApp) _navigate("Settings");
-                else MainForm.Open(a.ConfigPath!);
-            };
-            card.Controls.Add(action);
-            card.Resize += (_, _) => action.Location = new Point(card.Width - action.Width - 20, card.Height - action.Height - 16);
+            if (_busy) return;
+            if (a.Kind == AdviceKind.Orphans) _s.RunNow(true);
+            else if (a.Kind == AdviceKind.BigApp) { SetCap(a); await Recompute(); }
+            else if (a.CanFix) await Run(() => Fixer.TurnOff(a.Title, a.Servers!));
+            else MainForm.Open(a.ConfigPath!);
+        };
+        return b;
+    }
+
+    Card Done(IReadOnlyList<FixRecord> fixes)
+    {
+        var card = NewCard(100);
+        card.Width = ContentWidth;
+        foreach (var f in fixes)
+        {
+            var names = string.Join(", ", f.Entries.Select(e => e.Server.Name).Distinct());
+            var where = string.Join(", ", f.Entries.Select(e => Advisor.Display(e.Server.Path)).Distinct());
+            var projects = f.Entries.Count(e => e.Server.Project is not null);
+            card.Controls.Add(Button($"{names} is off", $"{where}{(projects > 0 ? $" · and {projects} project{(projects > 1 ? "s" : "")}" : "")} · {f.At:d MMM HH:mm}",
+                "Turn on again", async () => await Run(() => Fixer.Undo(f.Id))));
         }
-        card.Height = Math.Max(110, detail.Bottom + 22);
+        Fit(card);
         return card;
+    }
+
+    void SetCap(Advice a)
+    {
+        if (a.AgentId is null || _s.Report is not { } r) return;
+        var cap = Advisor.SuggestedCapMB(r.Snapshot.TotalRamBytes);
+        _s.Settings.Guard.AgentCapsMB[a.AgentId] = cap;
+        try { _s.Settings.Save(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(FindForm(), $"The cap is on until AI RAM Guard restarts: the settings file couldn't be saved ({e.Message}).", "AI RAM Guard", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        Log.Write($"capped {_s.Profiles.Agents.FirstOrDefault(p => p.Id == a.AgentId)?.Name ?? a.AgentId} at {cap / 1024} GB");
+    }
+
+    async void FixAll()
+    {
+        if (_busy) return;
+        var fixable = _s.Advice.Where(a => a.CanFix).ToList();
+        var cap = _s.Report is { } rep ? Advisor.SuggestedCapMB(rep.Snapshot.TotalRamBytes) / 1024 : 0;
+        var steps = fixable.Select(a => "•  " + (a.Kind switch
+        {
+            AdviceKind.Orphans => $"Close {a.Title}",
+            AdviceKind.BigApp => $"{a.Title}: cap it at {cap} GB",
+            _ => $"Turn off {string.Join(", ", a.Servers!.Select(s => s.Name).Distinct())} in {string.Join(", ", a.Servers!.Select(s => Advisor.Display(s.Path)).Distinct())}",
+        }));
+        if (MessageBox.Show(FindForm(), "AI RAM Guard will:\n\n" + string.Join("\n", steps) + "\n\nTurned-off servers can be turned on again on this page.",
+            "Fix all", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+
+        foreach (var a in fixable.Where(a => a.Kind == AdviceKind.BigApp)) SetCap(a);
+        var servers = fixable.Where(a => a.Kind == AdviceKind.Duplicates).ToList();
+        await Run(() =>
+        {
+            var failed = servers.Select(a => Fixer.TurnOff(a.Title, a.Servers!)).Where(r => !r.Ok).Select(r => r.Message).ToList();
+            return failed.Count == 0 ? new FixResult(true, "") : new FixResult(false, string.Join("\n\n", failed));
+        });
+        if (fixable.Any(a => a.Kind == AdviceKind.Orphans)) _s.RunNow(true);
+    }
+
+    /// <summary>Off the UI thread (a config can be big), then the page shows the new state straight away.</summary>
+    async Task Run(Func<FixResult> work)
+    {
+        if (_busy) return;
+        _busy = true;
+        FixResult r;
+        try { r = await Task.Run(work); }
+        catch (Exception e) { r = new(false, e.Message); }
+        _busy = false;
+        if (IsDisposed) return;
+        if (!r.Ok) MessageBox.Show(FindForm(), r.Message, "AI RAM Guard", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        await Recompute();
+    }
+
+    /// <summary>New advice from the last scan and the configs as they are now: the next round may be two minutes away.</summary>
+    async Task Recompute()
+    {
+        var caps = _s.Settings.Guard.AgentCapsMB;
+        var report = _s.Report;
+        IReadOnlyList<Advice> advice;
+        IReadOnlyList<FixRecord> applied;
+        try
+        {
+            (advice, applied) = await Task.Run(() =>
+            {
+                var configs = KnownConfigs.Read();
+                var f = Fixer.Applied(configs);
+                return (report is null ? _s.Advice : Advisor.Advise(report, configs, f, caps), f);
+            });
+        }
+        catch (Exception e) { Log.Write($"fixes refresh failed: {e.Message}"); return; } // async void caller: the next round shows the new state
+        _s.Advice = advice;
+        _s.Fixed = applied;
+        _s.Notify();
     }
 }
 
@@ -357,9 +509,9 @@ sealed class ActivityPage : Page
     public ActivityPage(AppState s) : base("Activity", "Everything AI RAM Guard did, newest first.")
     {
         _list.BackColor = Theme.Current.Surface;
-        _list.Location = new Point(22, 14);
+        _list.Location = new Point(Pad, Pad - 8);
         _card.Controls.Add(_list);
-        _card.Resize += (_, _) => _list.Width = _card.Width - 44;
+        _card.Resize += (_, _) => _list.Width = _card.Width - 2 * Pad;
         var open = new FlatButton("Open log file", glyph: "\uE8E5");
         open.Click += (_, _) => { if (File.Exists(Paths.LogFile)) MainForm.Open(Paths.LogFile); };
         Actions.Controls.Add(open);
@@ -374,13 +526,38 @@ sealed class ActivityPage : Page
         var key = lines.Length == 0 ? "" : lines[^1] + lines.Length;
         if (key == _shown && _shown.Length > 0) return;
         _shown = key;
-        _list.Set(Enumerable.Reverse(lines).Select(Parse).OfType<ActivityEntry>().Take(150).ToList());
-        _card.Height = _list.Height + 28;
+        _list.Set(Group(Enumerable.Reverse(lines).Select(Parse).OfType<ActivityEntry>()).Take(150).ToList());
+        _card.Height = _list.Height + Pad;
+    }
+
+    /// <summary>Back-to-back trims are one story ("Freed 41 GB in 12 rounds"), not twelve rows; so are priority changes.</summary>
+    internal static IEnumerable<ActivityEntry> Group(IEnumerable<ActivityEntry> newestFirst)
+    {
+        ActivityEntry? run = null;
+        foreach (var e in newestFirst)
+        {
+            if (run is { Group: not null } && e.Group == run.Group && e.Time.Date == run.Time.Date)
+            {
+                run = run with { Rounds = run.Rounds + 1, Freed = run.Freed + e.Freed, Since = e.Time };
+                continue;
+            }
+            if (run is not null) yield return Finish(run);
+            run = e with { Since = e.Time };
+        }
+        if (run is not null) yield return Finish(run);
+
+        static ActivityEntry Finish(ActivityEntry r) => r.Rounds < 2 ? r : r.Group == "trim"
+            ? r with { Title = $"Freed {Theme.Size(r.Freed)} in {r.Rounds} rounds", Detail = $"{r.Since:HH:mm}–{r.Time:HH:mm} · idle AI memory freed while RAM was low" }
+            : r with { Title = $"CPU priority changed {r.Rounds} times", Detail = $"{r.Since:HH:mm}–{r.Time:HH:mm} · lowered while a game was in front, back to normal after" };
     }
 
     static readonly System.Text.RegularExpressions.Regex Round = new(
         @"^(?<dry>\[dry-run\] )?(?<reason>.+): closed (?<k>\d+) orphans, trimmed (?<t>\d+) AI processes(?:, freed (?<f>\d+) MB)?, free (?<a>[\d.]+) -> (?<b>[\d.]+) GB$");
     static readonly System.Text.RegularExpressions.Regex Orphan = new(@"^(?<verb>closed|could not close|would close) orphan (?<name>\S+) (?<pid>\d+) (?<mb>\d+) MB (?<key>.+)$");
+    static readonly System.Text.RegularExpressions.Regex Switched = new(@"^turned (?<how>off|on) (?<name>\S+) (?:again )?in (?<where>.+)$");
+    static readonly System.Text.RegularExpressions.Regex Priority = new(@"^(?<how>game in front: lowered|restored) CPU priority of (?<n>\d+) AI processes$");
+    static readonly System.Text.RegularExpressions.Regex Capped = new(@"^capped (?<name>.+) at (?<gb>\d+) GB$");
+    static readonly System.Text.RegularExpressions.Regex Temp = new(@"^cleaned temp (?<dir>.+): (?<n>\d+) files, (?<mb>\d+) MB deleted, (?<s>\d+) in use$");
 
     /// <summary>"2026-10-25 12:20:21 installed 1.0.0 to …" → a timeline entry in plain words.</summary>
     internal static ActivityEntry? Parse(string line)
@@ -390,14 +567,17 @@ sealed class ActivityPage : Page
         var t = Theme.Current;
         if (Round.Match(msg) is { Success: true } m)
         {
-            var freed = m.Groups["f"].Success ? $"Freed {Theme.Size(long.Parse(m.Groups["f"].Value) << 20)}" : "Freed memory";
+            var mb = m.Groups["f"].Success ? long.Parse(m.Groups["f"].Value) : 0;
+            var freed = m.Groups["f"].Success ? $"Freed {Theme.Size(mb << 20)}" : "Freed memory";
             var parts = new List<string>();
             if (m.Groups["t"].Value != "0") parts.Add($"{m.Groups["t"].Value} AI processes trimmed");
             if (m.Groups["k"].Value != "0") parts.Add($"{m.Groups["k"].Value} leftovers closed");
             parts.Add(m.Groups["reason"].Value);
             return m.Groups["dry"].Success
                 ? new(time, "\uE945", t.Muted, "Would have freed memory (guard is off)", string.Join(" · ", parts))
-                : new(time, "\uE945", Theme.Brand, freed, string.Join(" · ", parts) + $" · free {m.Groups["a"].Value} → {m.Groups["b"].Value} GB");
+                // Only plain trims group: a round that closed leftovers is worth its own row.
+                : new(time, "\uE945", Theme.Brand, freed, string.Join(" · ", parts) + $" · free {m.Groups["a"].Value} → {m.Groups["b"].Value} GB",
+                    mb << 20, m.Groups["k"].Value == "0" ? "trim" : null);
         }
         if (Orphan.Match(msg) is { Success: true } o)
         {
@@ -409,6 +589,19 @@ sealed class ActivityPage : Page
                 _ => new(time, "\uE7BA", t.Warn, $"Could not close {o.Groups["key"].Value}", detail + " · it may already have exited"),
             };
         }
+        if (Switched.Match(msg) is { Success: true } sw)
+            return sw.Groups["how"].Value == "off"
+                ? new(time, "\uE7E8", t.Good, $"Turned off {sw.Groups["name"].Value}", $"{sw.Groups["where"].Value} · new sessions start without it")
+                : new(time, "\uE7A7", t.Muted, $"Turned {sw.Groups["name"].Value} on again", sw.Groups["where"].Value);
+        if (Temp.Match(msg) is { Success: true } tm)
+            return new(time, "\uE74D", t.Good, $"Cleaned up {Theme.Size(long.Parse(tm.Groups["mb"].Value) << 20)} of old temp files",
+                $"{long.Parse(tm.Groups["n"].Value):N0} files · {tm.Groups["dir"].Value}" + (tm.Groups["s"].Value != "0" ? $" · {tm.Groups["s"].Value} in use, kept" : ""));
+        if (Capped.Match(msg) is { Success: true } cp)
+            return new(time, "\uE9D9", Theme.Brand, $"Capped {cp.Groups["name"].Value} at {cp.Groups["gb"].Value} GB", "Above it, its idle memory is freed even when RAM isn't low");
+        if (Priority.Match(msg) is { Success: true } pr)
+            return pr.Groups["how"].Value == "restored"
+                ? new(time, "\uE7FC", t.Muted, "Game closed: CPU priority back to normal", $"{pr.Groups["n"].Value} AI processes", Group: "priority")
+                : new(time, "\uE7FC", t.Muted, "Game in front: AI apps got less CPU", $"{pr.Groups["n"].Value} AI processes at below-normal priority", Group: "priority");
         if (msg.StartsWith("installed ")) return new(time, "\uE896", t.Good, $"Installed version {msg.Split(' ')[1]}", "Start menu, autostart and Settings → Apps");
         if (msg.StartsWith("paused until ")) return new(time, "\uE769", t.Warn, $"Paused until {msg[13..]}", "Automatic rounds stopped");
         if (msg == "resumed") return new(time, "\uE768", t.Good, "Resumed guarding", "");
@@ -417,17 +610,18 @@ sealed class ActivityPage : Page
         return new(time, "\uE946", t.Muted, msg, "");
     }
 }
-/// <summary>Where AI tools write on disk, with one-click moves of caches to another drive (and back).</summary>
+
+/// <summary>Where AI tools write on disk, with one-click moves of caches to another drive (and back) and a temp clean-up.</summary>
 sealed class DiskPage : Page
 {
     readonly Card _card = NewCard(120);
-    readonly FlatButton _measure = new("Measure again", glyph: "");
+    readonly FlatButton _measure = new("Measure again", glyph: "\uE72C");
     IReadOnlyList<SpotUsage>? _spots;
     bool _busy;
 
     public bool Busy => _busy;
 
-    public DiskPage() : base("Disk", "Where AI tools and their caches write. Move a cache off the system drive; undo puts it back.")
+    public DiskPage() : base("Disk", "Where AI tools and their caches write. Clean up old temp files, or move a cache off the system drive.")
     {
         _measure.Click += (_, _) => Measure();
         Actions.Controls.Add(_measure);
@@ -460,8 +654,9 @@ sealed class DiskPage : Page
 
     void ShowCard(string title, params Control[] rows)
     {
-        foreach (Control c in _card.Controls) c.Dispose();
+        var old = _card.Controls.Cast<Control>().ToList();
         _card.Controls.Clear();
+        foreach (var c in old) c.Dispose();
         _card.Width = ContentWidth;
         _card.Controls.Add(CardTitle(title));
         _card.Controls.AddRange(rows);
@@ -474,26 +669,62 @@ sealed class DiskPage : Page
         var moved = Mover.Undoable();
         var shown = _spots.Where(u => u.Exists || moved.Contains(u.Spot.Id)).OrderByDescending(u => u.Bytes).ToList();
         var onSystem = shown.Where(u => u.OnSystemDrive).Sum(u => u.Bytes);
-        ShowCard($"{Theme.Size(onSystem)} on the system drive · {Theme.Size(shown.Sum(u => u.Bytes) - onSystem)} elsewhere",
+        ShowCard($"{Theme.Size(onSystem)} on the system drive  ·  {Theme.Size(shown.Sum(u => u.Bytes) - onSystem)} elsewhere",
             shown.Select(u => Row(u, moved.Contains(u.Spot.Id))).ToArray());
     }
 
     Control Row(SpotUsage u, bool movedByUs)
     {
-        var where = $"{u.RealPath} · {(u.OnSystemDrive ? "system drive" : $"on {u.Drive}")}";
+        var where = $"{Advisor.Display(u.RealPath)} · {(u.OnSystemDrive ? "system drive" : $"on {u.Drive}")}";
         var text = $"{u.Spot.Name} · {Theme.Size(u.Bytes)}";
         if (movedByUs) return Button(text, where + " · moved by AI RAM Guard", "Undo move", () => UndoMove(u));
         void Open() { if (Directory.Exists(u.RealPath)) MainForm.Open(u.RealPath); }
         if (!u.Spot.Movable) return Button(text, where + $" · holds sessions: close the app, then set {u.Spot.EnvVars[0]}", "Open", Open);
         if (u.Links > 0) return Button(text, where + $" · {u.Links} links inside: only an admin can move those, so it stays", "Open", Open);
         var targets = u.OnSystemDrive ? Storage.Targets(u).OrderByDescending(d => d.AvailableFreeSpace).ToList() : [];
-        if (targets.Count == 0) return Button(text, where, "Open", Open);
-        if (targets.Count == 1) return Button(text, where, $"Move to {targets[0].Name.TrimEnd('\\')}", () => MoveTo(u, targets[0]));
-        return Button(text, where, "Move to…", () =>
+        (string, Action)? move = targets.Count switch
         {
-            var menu = new ContextMenuStrip { Renderer = new MenuRenderer(Theme.Current) };
-            foreach (var d in targets) menu.Items.Add($"{d.Name.TrimEnd('\\')}  ({Theme.Size(d.AvailableFreeSpace)} free)", null, (_, _) => MoveTo(u, d));
-            menu.Show(Cursor.Position);
+            0 => null,
+            1 => ($"Move to {targets[0].Name.TrimEnd('\\')}", () => MoveTo(u, targets[0])),
+            _ => ("Move to…", () =>
+            {
+                var menu = new ContextMenuStrip { Renderer = new MenuRenderer(Theme.Current) };
+                foreach (var d in targets) menu.Items.Add($"{d.Name.TrimEnd('\\')}  ({Theme.Size(d.AvailableFreeSpace)} free)", null, (_, _) => MoveTo(u, d));
+                menu.Show(Cursor.Position);
+            }),
+        };
+        if (u.Spot.Id == "temp") return Button(text, where + " · old files can go", "Clean up", () => CleanTemp(u), move);
+        return move is { } m ? Button(text, where, m.Item1, m.Item2) : Button(text, where, "Open", Open);
+    }
+
+    async void CleanTemp(SpotUsage u)
+    {
+        if (_busy) return;
+        _busy = true;
+        ShowCard("Looking for temp files nobody touched for 7 days…");
+        TempFiles found;
+        try { found = await Task.Run(() => TempCleaner.Find(u.RealPath)); }
+        catch (Exception e) { found = new(0, 0); Log.Write($"temp scan failed: {e.Message}"); }
+        _busy = false;
+        OnUi(Render);
+        if (found.Files == 0)
+        {
+            MessageBox.Show(FindForm(), $"Nothing to clean: no file in {u.RealPath} is older than 7 days.", "AI RAM Guard", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        if (MessageBox.Show(FindForm(), $"Delete {found.Files:N0} files ({Theme.Size(found.Bytes)}) from {u.RealPath} that nothing has touched for 7 days?\n\nFiles in use are skipped. Deleted files don't go to the Recycle Bin. This is the rule Windows' own Disk Cleanup uses.",
+            "AI RAM Guard", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK) return;
+        _busy = true;
+        ShowCard("Cleaning up old temp files…");
+        TempFiles r;
+        try { r = await Task.Run(() => TempCleaner.Clean(u.RealPath)); }
+        catch (Exception e) { r = new(0, 0); Log.Write($"temp clean-up failed: {e.Message}"); }
+        _busy = false;
+        OnUi(() =>
+        {
+            MessageBox.Show(FindForm(), $"Deleted {r.Files:N0} files and freed {Theme.Size(r.Bytes)}." + (r.Skipped > 0 ? $" {r.Skipped:N0} were in use and stayed." : ""),
+                "AI RAM Guard", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            Measure();
         });
     }
 
@@ -568,7 +799,7 @@ sealed class SettingsPage : Page
 
         var more = Section("Advanced",
             Button("Add your own AI app", "Recognise a tool AI RAM Guard doesn't know yet (JSON, no code).", "Edit profiles", OpenUserProfiles),
-            Button("Data folder", "Settings, history, statistics and the log.", "Open", () => { Directory.CreateDirectory(Paths.DataDir); MainForm.Open(Paths.DataDir); }));
+            Button("Data folder", "Settings, history, statistics, config backups and the log.", "Open", () => { Directory.CreateDirectory(Paths.DataDir); MainForm.Open(Paths.DataDir); }));
 
         var about = Section($"About · version {MainForm.Version}",
             Button("Open source on GitHub", "Star the repo, report a bug or add an AI app.", "GitHub", () => MainForm.Open(MainForm.RepoUrl)),
@@ -586,12 +817,12 @@ sealed class SettingsPage : Page
         var ids = (s.Report?.Agents.Select(a => a.Profile) ?? [])
             .Concat(s.Profiles.Agents.Where(p => s.Settings.Guard.AgentCapsMB.ContainsKey(p.Id)))
             .DistinctBy(p => p.Id).ToList();
-        var key = string.Join(",", ids.Select(p => p.Id));
+        var key = string.Join(",", ids.Select(p => p.Id + s.Settings.Guard.AgentCapsMB.GetValueOrDefault(p.Id)));
         if (key == _capsShown) return;
         _capsShown = key;
         while (_caps.Controls.Count > 1) _caps.Controls[1].Dispose();
         if (ids.Count == 0)
-            _caps.Controls.Add(new Label { Text = "No AI apps running right now.", AutoSize = true, ForeColor = Theme.Current.Muted, BackColor = Theme.Current.Surface });
+            _caps.Controls.Add(new TextBlock("No AI apps running right now.", Theme.Current.Body, Theme.Current.Muted, Theme.Current.Surface));
         foreach (var p in ids)
         {
             s.Settings.Guard.AgentCapsMB.TryGetValue(p.Id, out var cap);
@@ -628,12 +859,16 @@ sealed class SettingsPage : Page
     {
         var t = Theme.Current;
         var row = new Panel { Height = 52, BackColor = t.Surface };
-        var label = new Label { Text = text, AutoSize = true, Location = new Point(0, 6), ForeColor = t.Text, BackColor = t.Surface };
-        var sub = new Label { Text = hint, AutoSize = true, Location = new Point(0, 28), ForeColor = t.Muted, BackColor = t.Surface, Font = t.Small };
+        var label = new TextBlock(text, t.Body, t.Text, t.Surface) { Location = new Point(0, 7) };
+        var sub = new TextBlock(hint, t.Small, t.Muted, t.Surface) { Location = new Point(0, 29) };
         stepper.BackColor = t.Surface;
         stepper.ValueChanged += (_, _) => { set(stepper.Value); _s.Settings.Save(); _s.Notify(); };
         row.Controls.AddRange([label, sub, stepper]);
-        row.Resize += (_, _) => stepper.Location = new Point(row.Width - stepper.Width, 9);
+        row.Resize += (_, _) =>
+        {
+            stepper.Location = new Point(row.Width - stepper.Width, 9);
+            label.Width = sub.Width = Math.Max(100, stepper.Left - 16);
+        };
         return row;
     }
 
@@ -671,12 +906,12 @@ sealed class Sidebar : Panel
         BackColor = t.Surface;
         DoubleBuffered = true;
 
-        var logo = new PictureBox { Image = MainForm.Logo(64), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(36, 36), Location = new Point(22, 24), BackColor = t.Surface };
-        var name = new Label { Text = "AI RAM Guard", Font = new Font("Segoe UI Semibold", 13f), ForeColor = t.Text, AutoSize = true, Location = new Point(66, 22), BackColor = t.Surface };
-        var by = new Label { Text = "by Byens IT", Font = t.Small, ForeColor = t.Muted, AutoSize = true, Location = new Point(68, 44), BackColor = t.Surface };
+        var logo = new PictureBox { Image = MainForm.Logo(64), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(36, 36), Location = new Point(22, 26), BackColor = t.Surface };
+        var name = new Label { Text = "AI RAM Guard", Font = new Font("Segoe UI Semibold", 13f), ForeColor = t.Text, AutoSize = true, Location = new Point(66, 24), BackColor = t.Surface };
+        var by = new Label { Text = "by Byens IT", Font = t.Small, ForeColor = t.Muted, AutoSize = true, Location = new Point(68, 46), BackColor = t.Surface };
         Controls.AddRange([logo, name, by]);
 
-        var y = 96;
+        var y = 104;
         foreach (var (n, glyph) in items)
         {
             var b = new NavButton(n, glyph) { Location = new Point(12, y), Width = Width - 24 };
@@ -691,8 +926,8 @@ sealed class Sidebar : Panel
 
     public void UpdateBadges()
     {
-        var n = _state.Advice.Count(a => a.SavingsBytes > 100L << 20);
-        _buttons.First(b => b.Text == "Recommendations").Badge = n > 0 ? n.ToString() : "";
+        var n = _state.Advice.Count(a => a.CanFix);
+        _buttons.First(b => b.Text == "Fixes").Badge = n > 0 ? n.ToString() : "";
     }
 
     protected override void OnPaint(PaintEventArgs e)

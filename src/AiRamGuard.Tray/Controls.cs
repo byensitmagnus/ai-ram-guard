@@ -66,13 +66,15 @@ sealed class Pill : Painted
     protected override void Draw(Graphics g) => DrawChip(g, base.Text, T.Bold, _fg, _bg, 0, 0, Height - 1);
 }
 
-/// <summary>A rounded surface that holds other controls.</summary>
+/// <summary>A rounded surface that holds other controls, with thin lines between its rows.</summary>
 sealed class Card : Panel
 {
+    /// <summary>Where to draw a divider (y), set by the page's layout.</summary>
+    public int[] Dividers { get; set; } = [];
+
     public Card()
     {
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-        Padding = new Padding(18);
         BackColor = Theme.Current.Bg;
     }
 
@@ -85,6 +87,63 @@ sealed class Card : Panel
         using var pen = new Pen(t.Border);
         e.Graphics.FillPath(fill, path);
         e.Graphics.DrawPath(pen, path);
+        e.Graphics.SmoothingMode = SmoothingMode.None;
+        foreach (var y in Dividers) e.Graphics.DrawLine(pen, 24, y, Width - 25, y);
+    }
+}
+
+/// <summary>Text drawn without GDI's side padding, so it lines up with everything else that is painted. Grows to fit when it wraps.</summary>
+sealed class TextBlock : Painted
+{
+    public bool Wrap { get; init; }
+    public bool AlignRight { get; init; }
+
+    public TextBlock(string text, Font font, Color color, Color back)
+    {
+        Font = font;
+        ForeColor = color;
+        BackColor = back;
+        base.Text = text;
+        Height = font.Height + 2;
+    }
+
+    TextFormatFlags Flags => TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix
+        | (Wrap ? TextFormatFlags.WordBreak : TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis)
+        | (AlignRight ? TextFormatFlags.Right : TextFormatFlags.Left);
+
+    void Fit() { if (Wrap) Height = Math.Max(Font.Height, TextRenderer.MeasureText(base.Text, Font, new Size(Math.Max(1, Width), 0), Flags).Height); }
+
+    protected override void OnTextChanged(EventArgs e) { Fit(); Invalidate(); base.OnTextChanged(e); }
+    protected override void OnResize(EventArgs e) { Fit(); base.OnResize(e); }
+
+    protected override void Draw(Graphics g) => TextRenderer.DrawText(g, base.Text, Font, ClientRectangle, ForeColor, Flags);
+}
+
+/// <summary>Page title and one line under it, lined up with the cards' left edge.</summary>
+sealed class PageHeader : Painted
+{
+    string _title = "", _sub = "";
+    public PageHeader() { Height = 64; }
+    public void Set(string title, string sub) { (_title, _sub) = (title, sub); Invalidate(); }
+
+    protected override void Draw(Graphics g)
+    {
+        DrawText(g, _title, T.Heading, T.Text, new RectangleF(0, 0, Width, 36), v: StringAlignment.Near);
+        DrawText(g, _sub, T.Body, T.Muted, new RectangleF(0, 42, Width, 20), v: StringAlignment.Near);
+    }
+}
+
+/// <summary>An icon in a soft circle of its own colour: the marker at the left of a fix.</summary>
+sealed class IconCircle : Painted
+{
+    readonly string _glyph;
+    readonly Color _color;
+    public IconCircle(string glyph, Color color) { (_glyph, _color) = (glyph, color); Size = new Size(40, 40); }
+
+    protected override void Draw(Graphics g)
+    {
+        using (var b = new SolidBrush(Color.FromArgb(T.Dark ? 40 : 28, _color))) g.FillEllipse(b, 0, 0, Width - 1, Height - 1);
+        DrawText(g, _glyph, T.Icon, _color, new RectangleF(0, 0, Width, Height), StringAlignment.Center);
     }
 }
 
@@ -502,31 +561,34 @@ sealed class Stepper : Painted
     }
 }
 
-/// <summary>Small number tile: label, big value, hint.</summary>
+/// <summary>A number with what it means under it: the number is the point, the words explain it.</summary>
 sealed class StatTile : Painted
 {
-    string _label = "", _value = "", _hint = "";
+    string _value = "", _label = "";
     Color? _accent;
 
-    public StatTile() { Size = new Size(200, 86); }
+    public StatTile() { Size = new Size(200, 58); }
 
-    public void Set(string label, string value, string hint, Color? accent = null)
+    public void Set(string value, string label, Color? accent = null)
     {
-        (_label, _value, _hint, _accent) = (label, value, hint, accent);
+        (_value, _label, _accent) = (value, label, accent);
+        AccessibleName = $"{value} {label}";
         Invalidate();
     }
 
     protected override void Draw(Graphics g)
     {
-        DrawText(g, _label, T.Small, T.Muted, new RectangleF(0, 0, Width, 20));
-        DrawText(g, _value, T.Title, _accent ?? T.Text, new RectangleF(0, 20, Width, 34));
-        DrawText(g, _hint, T.Small, T.Muted, new RectangleF(0, 56, Width, 20));
+        // A thin bar in the number's colour, like PC Manager's metric tiles: it ties the number to its meaning.
+        using (var bar = new SolidBrush(_accent ?? T.Other)) g.FillRectangle(bar, 0, 4, 3, Height - 8);
+        DrawText(g, _value, T.Metric, _accent ?? T.Text, new RectangleF(14, 0, Width - 14, 32), v: StringAlignment.Near);
+        DrawText(g, _label, T.Small, T.Muted, new RectangleF(14, 36, Width - 14, 20), v: StringAlignment.Near);
     }
 }
 
 
 /// <summary>One entry on the Activity page, already in plain words.</summary>
-sealed record ActivityEntry(DateTime Time, string Glyph, Color Color, string Title, string Detail);
+/// <param name="Group">Back-to-back entries of one group ("trim", "priority") show as one row: Rounds counts them, Since is the oldest.</param>
+sealed record ActivityEntry(DateTime Time, string Glyph, Color Color, string Title, string Detail, long Freed = 0, string? Group = null, int Rounds = 1, DateTime Since = default);
 
 /// <summary>The guard's log as a readable timeline: grouped by day, an icon per kind, newest first.</summary>
 sealed class ActivityList : Painted

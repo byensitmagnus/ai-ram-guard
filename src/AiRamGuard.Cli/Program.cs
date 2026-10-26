@@ -7,6 +7,7 @@ AI RAM Guard (airg) - stop AI agents and MCP servers from eating your RAM.
 Usage:
   airg scan [--json]          Show RAM per AI app, duplicate MCP servers and orphans
   airg advise [--json]        Permanent fixes: duplicated MCP servers, npx wrappers, which config to change
+                              (the tray app's Fixes page applies them with one click, with undo)
   airg clean [--dry-run]      Close orphans and trim AI apps now (ignores the threshold)
   airg watch [--min-free GB] [--interval SEC] [--no-game-mode]
                               Guard continuously (what the tray app does)
@@ -42,9 +43,10 @@ switch (cmd)
         return 0;
 
     case "advise":
-        var advice = Advisor.Advise(Guard.Scan(profiles), KnownConfigs.Read());
+        var configs = KnownConfigs.Read();
+        var advice = Advisor.Advise(Guard.Scan(profiles), configs, Fixer.Applied(configs));
         if (Has("--json"))
-            Console.WriteLine(JsonSerializer.Serialize(advice.Select(a => new { kind = a.Kind.ToString(), a.Title, a.Detail, savingsMB = a.SavingsBytes / 1048576, a.ConfigPath }), new JsonSerializerOptions { WriteIndented = true }));
+            Console.WriteLine(JsonSerializer.Serialize(advice.Select(a => new { kind = a.Kind.ToString(), a.Title, a.Detail, savingsMB = a.SavingsBytes / 1048576, a.ConfigPath, canFix = a.CanFix }), new JsonSerializerOptions { WriteIndented = true }));
         else if (advice.Count == 0) Console.WriteLine("Nothing to fix. No duplicated MCP servers and no leftovers.");
         else
             foreach (var a in advice)

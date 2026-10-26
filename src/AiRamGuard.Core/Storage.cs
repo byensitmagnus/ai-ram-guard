@@ -276,6 +276,81 @@ public static class Mover
     }
 }
 
+public sealed record TempFiles(int Files, long Bytes, int Skipped = 0);
+
+/// <summary>Deletes old files from the temp folder, the rule Windows' Disk Cleanup uses: untouched for a week.</summary>
+public static class TempCleaner
+{
+    public static readonly TimeSpan Age = TimeSpan.FromDays(7);
+
+    /// <summary>What a clean-up would delete.</summary>
+    public static TempFiles Find(string dir) => Walk(dir, delete: false);
+
+    public static TempFiles Clean(string dir)
+    {
+        var r = Walk(dir, delete: true);
+        Log.Write($"cleaned temp {dir}: {r.Files} files, {r.Bytes >> 20} MB deleted, {r.Skipped} in use");
+        return r;
+    }
+
+    /// <summary>Only a temp folder: named Temp or Tmp, or the one TEMP points at, and never the profile or a folder above it.</summary>
+    internal static bool IsTempFolder(string dir)
+    {
+        if (!Path.IsPathFullyQualified(dir) || !Directory.Exists(dir)) return false;
+        var d = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir));
+        var temp = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
+        var named = Path.GetFileName(d) is var n && (n.Equals("Temp", StringComparison.OrdinalIgnoreCase) || n.Equals("Tmp", StringComparison.OrdinalIgnoreCase));
+        var home = Path.TrimEndingDirectorySeparator(Storage.Home) + "\\";
+        return (named || d.Equals(temp, StringComparison.OrdinalIgnoreCase))
+            && !home.StartsWith(d + "\\", StringComparison.OrdinalIgnoreCase)
+            && !d.Equals(Path.TrimEndingDirectorySeparator(Path.GetPathRoot(d)!), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Old by both write and creation time: an installer that unpacks a file gives it an old write time but a new creation time, and it is in use.
+    /// Links are never followed, so nothing outside the folder is touched. Folders go only when empty and old.
+    /// </summary>
+    static TempFiles Walk(string dir, bool delete)
+    {
+        var cutoff = DateTime.UtcNow - Age;
+        if (!IsTempFolder(dir)) return new(0, 0);
+
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.System };
+        var old = new FileSystemEnumerable<(string Path, long Length)>(dir, (ref FileSystemEntry e) => (e.ToFullPath(), e.Length), options)
+        {
+            ShouldIncludePredicate = (ref FileSystemEntry e) => !e.IsDirectory && e.LastWriteTimeUtc < cutoff && e.CreationTimeUtc < cutoff,
+        };
+        // Folders are picked before any file goes, while their write time still says whether something used them lately (a lock folder, a work folder).
+        var folders = delete ? new FileSystemEnumerable<string>(dir, (ref FileSystemEntry e) => e.ToFullPath(), options)
+        {
+            ShouldIncludePredicate = (ref FileSystemEntry e) => e.IsDirectory && e.CreationTimeUtc < cutoff && e.LastWriteTimeUtc < cutoff,
+        }.OrderByDescending(p => p.Length).ToList() : [];
+
+        int files = 0, skipped = 0;
+        long bytes = 0;
+        foreach (var (path, length) in old)
+        {
+            if (delete)
+            {
+                // Opened exclusively, then deleted as the handle closes: a file any program has open, even one that allows deleting it, stays.
+                try { using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None, 1, FileOptions.DeleteOnClose)) { } }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { skipped++; continue; } // in use or read-only: it stays
+            }
+            files++;
+            bytes += length;
+        }
+        if (!delete) return new(files, bytes);
+
+        // Deepest first, so a folder emptied by its children goes too.
+        foreach (var f in folders)
+        {
+            try { if (!Directory.EnumerateFileSystemEntries(f).Any()) Directory.Delete(f); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+        return new(files, bytes, skipped);
+    }
+}
+
 /// <summary>User environment variables, read and written raw so an undo restores exactly what was there (%USERPROFILE%-style values too).</summary>
 public static class Env
 {

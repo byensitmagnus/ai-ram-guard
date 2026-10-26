@@ -33,6 +33,8 @@ sealed class Theme
     public Font Icon { get; } = new(IconFont, 12f);
     public Font Section { get; } = new("Segoe UI Semibold", 12f);
     public Font Heading { get; } = new("Segoe UI Semibold", 20f);
+    /// <summary>A number that is the point of its tile ("9.3 GB").</summary>
+    public Font Metric { get; } = new("Segoe UI Semibold", 18f);
 
     Theme(bool dark)
     {
@@ -48,10 +50,13 @@ sealed class Theme
 
     public static Theme Current { get; private set; } = Detect();
 
+    /// <summary>Set for the docs screenshots of the other theme; null follows Windows.</summary>
+    public static bool? ForceDark { get; set; }
+
     public static Theme Detect()
     {
         var light = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")?.GetValue("AppsUseLightTheme");
-        return Current = new Theme(light is not int v || v == 0);
+        return Current = new Theme(ForceDark ?? (light is not int v || v == 0));
     }
 
     public static GraphicsPath Rounded(RectangleF r, float radius)

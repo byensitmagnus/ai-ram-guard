@@ -67,13 +67,13 @@ On macOS? It's the same bug there ([claude-code#1935](https://github.com/anthrop
 |---|---|
 | 📊 **Live dashboard** | RAM ring, 24-hour history graph and a row per AI app with its icon, MCP servers (duplicates flagged) and its share of your RAM. |
 | 🕑 **Activity timeline** | Everything the guard did, in plain words: what it freed, which leftovers it closed and why. |
-| 💡 **Recommendations** | Finds the *cause*: "`rea-agents` runs 11× under Claude: it's configured in `~/.claude.json`", "12 npx wrappers in front of desktop-commander", with the RAM each fix saves and a button that opens the right file. |
+| 🔧 **Fixes** | Finds the *cause* and fixes it in one click: "`rea-agents` runs 11× under Claude" → **Turn off** removes it from `~/.claude.json` (or sets `enabled = false` in Codex' `config.toml`), with a backup and **Turn on again**. Leftovers get **Close them**, a greedy app **Cap at 4 GB**. What only you can change (a plugin, an npx wrapper) says where. |
 | 🧹 **Closes leftovers** | MCP servers and `npx` wrappers it saw an AI app start, once that app is gone. Anything you started yourself, from a terminal or a launcher, is left alone. |
 | 🪶 **Frees memory without closing apps** | When free RAM drops below your limit, idle AI memory is moved to the pagefile. Apps keep running. The app you are using is never touched. |
 | 🎯 **Per-app caps** | "Codex may use at most 3 GB." Above it, its idle memory is freed even when the PC has RAM to spare. |
 | 🎮 **Game mode** | While a fullscreen game is in front, a stricter limit applies, and background AI apps get lower CPU priority and efficiency mode (EcoQoS), so your game gets the RAM and the CPU. |
 | 🐢 **Lower priority in the background** | AI apps you are not using get low memory priority, so Windows frees their memory first instead of your game's or browser's. Restored the moment you switch to them. |
-| 💾 **Disk** | Shows where AI tools and their caches write (npm, uv, pip, NuGet, Playwright, Hugging Face, Ollama, temp, Claude Code, Codex) and how much is on the system drive. Moves a cache to another drive in one click, with undo. |
+| 💾 **Disk** | Shows where AI tools and their caches write (npm, uv, pip, NuGet, Playwright, Hugging Face, Ollama, temp, Claude Code, Codex) and how much is on the system drive. Cleans up temp files nobody touched for 7 days, and moves a cache to another drive in one click, with undo. |
 | ⏸️ **Pause** | One click pauses the guard for an hour. |
 | 🖥️ **Light** | ~20–30 MB, trims itself between rounds. No Electron, no background services, no admin rights. |
 | 📦 **Real install** | Start menu shortcut, `airg` on your PATH, starts with Windows, uninstalls from *Settings → Apps*. Or run it portable. |
@@ -82,11 +82,11 @@ On macOS? It's the same bug there ([claude-code#1935](https://github.com/anthrop
 
 <table>
   <tr>
-    <td><img src="assets/screenshot-recommendations.png" alt="Recommendations: duplicated MCP servers and the config file that loads them"></td>
-    <td><img src="assets/screenshot-disk.png" alt="Disk: where AI tools and caches write, with a button to move a cache to another drive"></td>
+    <td><img src="assets/screenshot-fixes.png" alt="Fixes: a duplicated MCP server with a Turn off button, and what needs you"></td>
+    <td><img src="assets/screenshot-disk.png" alt="Disk: where AI tools and caches write, with buttons to clean up temp files and move a cache to another drive"></td>
   </tr>
   <tr>
-    <td align="center"><b>Recommendations</b>: fix the cause</td>
+    <td align="center"><b>Fixes</b>: the cause, fixed in one click</td>
     <td align="center"><b>Disk</b>: caches off the system drive, with undo</td>
   </tr>
   <tr>
@@ -134,7 +134,7 @@ Every command, plus JSON output: [docs/cli.md](docs/cli.md).
 
 Claude Desktop & Claude Code · OpenAI Codex & ChatGPT desktop · Cursor · Windsurf · VS Code (Copilot / agent extensions) · Gemini CLI · Grok · LM Studio · Ollama, plus **any MCP server** (`@modelcontextprotocol/*`, `npx`, `uvx`, `*-mcp`, `mcp-server-*`).
 
-Config files read for recommendations: `~/.claude.json`, `~/.claude/settings.json`, Claude Desktop's `claude_desktop_config.json`, `~/.codex/config.toml`, `~/.cursor/mcp.json`, Windsurf's `mcp_config.json`, `~/.gemini/settings.json`, VS Code's `mcp.json`. They are only read, never changed.
+Config files it knows: `~/.claude.json`, `~/.claude/settings.json`, Claude Desktop's `claude_desktop_config.json`, `~/.codex/config.toml`, `~/.cursor/mcp.json`, Windsurf's `mcp_config.json`, `~/.gemini/settings.json`, VS Code's `mcp.json`. One is changed only when you click **Turn off** on the *Fixes* page.
 
 Missing your tool? It's a few lines of JSON: [docs/adding-an-agent.md](docs/adding-an-agent.md).
 
@@ -149,7 +149,9 @@ AI RAM Guard was designed to **never break the work you are doing**:
 - Freeing memory (`EmptyWorkingSet`) doesn't end anything. It's the mechanism Windows itself uses under memory pressure.
 - Lowering priority only changes values still at Windows' default, and puts back exactly what it changed: when you switch to the app, when the game ends, when you pause, and when AI RAM Guard exits.
 - Moving a cache uses Windows' own `robocopy`: a file is deleted from the old folder only after it was copied, files in use stay put, and links inside the folder are never followed. The old variable is saved first, so **Undo** restores it exactly. Claude Code and Codex folders hold sessions and settings, so they are shown but never moved.
-- Config files are only read. No network access, no telemetry, no admin rights. Every action is logged and shown on the *Activity* page.
+- A config file changes only when you click **Turn off**, and the card names the entry it removes. A server is matched by its whole name or package, never by a common name like `index.js`. A backup is made first (the last 20 per file, in the data folder on this PC), only that server's entry changes, and **Turn on again** puts it back exactly. If the app writes the file at the same moment, AI RAM Guard starts over on the app's version instead of overwriting it. Tested against a running Claude Code, which rewrites `~/.claude.json` every 30–60 seconds: the change stayed. A file with comments, or that isn't UTF-8, is never rewritten.
+- Cleaning up temp files works only in a temp folder, and deletes only files nobody wrote or created for 7 days (the rule Windows' Disk Cleanup uses). A file any program has open stays, and links are never followed. You see how many and how much before anything goes.
+- No network access, no telemetry, no admin rights. Every action is logged and shown on the *Activity* page.
 
 Details: [docs/how-it-works.md](docs/how-it-works.md).
 
@@ -192,7 +194,7 @@ Not yet. The analysis core is platform-neutral; the process reader is Windows-on
 - [x] Per-user installer with Start menu, autostart and uninstall
 - [x] See where AI tools write to disk, and move caches to another drive in one click (with undo)
 - [x] Lower memory priority for AI apps in the background, and CPU priority while you game
-- [ ] One-click config fixes (with backup) for the recommendations
+- [x] One-click fixes (with backup and undo) for duplicated MCP servers, leftovers and greedy apps
 - [ ] winget and Scoop packages
 - [ ] Code-signed releases
 - [ ] macOS and Linux process readers

@@ -14,12 +14,14 @@ static class Screenshots
         var state = new AppState();
         var inspected = Guard.Inspect(state.Settings.Guard, state.Profiles);
         state.Report = inspected.Report;
-        state.Advice = Advisor.Advise(inspected.Report, KnownConfigs.Read());
+        var configs = KnownConfigs.Read();
+        state.Fixed = Fixer.Applied(configs);
+        state.Advice = Advisor.Advise(inspected.Report, configs, state.Fixed, state.Settings.Guard.AgentCapsMB);
         state.LastRun = DateTime.Now;
 
         using var form = new MainForm(state) { StartPosition = FormStartPosition.Manual, Location = new Point(-5000, -5000), ShowInTaskbar = false, Size = new Size(1180, 860) };
         form.Show();
-        foreach (var page in new[] { "Overview", "Recommendations", "Disk", "Settings", "Activity" })
+        foreach (var page in new[] { "Overview", "Fixes", "Disk", "Settings", "Activity" })
         {
             form.ShowPage(page);
             Application.DoEvents();

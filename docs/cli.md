@@ -5,7 +5,7 @@
 | `airg scan` | RAM per AI app, its helpers/MCP servers (duplicates flagged) and orphans |
 | `airg scan --json` | Same data as JSON (MB values) for scripts and dashboards |
 | `airg advise` | Permanent fixes: duplicated MCP servers, npx wrappers, the config file that loads them, and what each saves |
-| `airg advise --json` | Same as JSON: `kind`, `title`, `detail`, `savingsMB`, `configPath` |
+| `airg advise --json` | Same as JSON: `kind`, `title`, `detail`, `savingsMB`, `configPath`, `canFix` (the app's *Fixes* page can do it in one click) |
 | `airg clean` | Close orphans and trim AI apps now, regardless of the limit |
 | `airg clean --dry-run` | Only show what `clean` would do |
 | `airg watch` | Guard every 2 minutes (headless version of the app) |

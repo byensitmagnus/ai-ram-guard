@@ -1,9 +1,24 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 (2026-10-26)
+
+The app now does the fix instead of telling you what to do.
 
 **New**
+- *Fixes* page (was *Recommendations*): every fix the app can make has its own button. **Turn off** a duplicated MCP server: it is removed from `~/.claude.json` (every project included) or set to `enabled = false` in Codex' `config.toml`. A backup is made first, and **Turn on again** restores it exactly. **Close them** for leftovers, **Cap at N GB** for an app that uses over a fifth of your RAM, and **Fix all** when there are several. What only you can change (a plugin, an npx wrapper) is listed apart under *Needs you*, with where to do it.
+- Safe next to apps that write their config all the time: the file is read again right before writing, and if it changed, the fix starts over on the new version. Written atomically, read back afterwards, format (indent, line ends, BOM) kept. A file with comments, a non-UTF-8 file or an unusual TOML layout is never rewritten. A server is matched by its whole name or package, never by a common name like `index.js`, and the card names the entry it removes. Undo records and backups (20 per file) stay on this PC, not in the roaming profile.
+- *Disk*: **Clean up** old temp files. Only in a temp folder, only files nobody wrote or created for 7 days, never a file any program has open (also one opened with delete sharing), never through a link, and with the count and size shown first.
 - `airg --version` (also `-v`, `version`) prints the version. It used to print the help and exit 1.
+- `airg advise --json` has `canFix`.
+
+**Redesign**
+- One layout on every page: a header with one main action, then cards with the same spacing (32 px page margin, 24 inside a card, 16 between cards).
+- Overview leads with one sentence ("AI apps use 10.0 GB") and two numbers: free RAM and what the fixes would save, with **Free RAM now** and **See fixes** under them.
+- Activity groups back-to-back rounds ("Freed 46.6 GB in 10 rounds") and game-mode priority changes, and shows fixes, temp clean-ups and caps.
+- Paths under your user folder show as `~` on the Disk page too.
+
+**Fix**
+- A helper called `server.mjs` was matched to every config, because the section name `mcp_servers` contains "server".
 
 ## 1.2.2 (2026-10-25)
 

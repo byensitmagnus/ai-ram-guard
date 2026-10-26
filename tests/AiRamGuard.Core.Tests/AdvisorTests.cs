@@ -63,9 +63,27 @@ public class AdvisorTests
     [Theory]
     [InlineData("@wonderwhy-er/desktop-commander", "desktop-commander")]
     [InlineData("rea-agents", "rea-agents")]
-    [InlineData("server.mjs", "server")]
+    [InlineData("tools/rea.mjs", "rea")]
     public void Config_search_uses_the_package_tail(string key, string inConfig) =>
         Assert.NotNull(Advisor.FindConfig(key, [new ConfigFile("x", "p.json", $"{{\"mcpServers\": {{\"a\": {{\"args\": [\"{inConfig}\"]}}}}}}")]));
+
+    [Fact]
+    public void A_generic_helper_name_does_not_match_the_section_name()
+    {
+        // Codex' own app-tools server runs as "./server.mjs"; "mcp_servers" and "mcpServers" must not count as a match.
+        Assert.Null(Advisor.FindConfig("server.mjs", [new ConfigFile("Codex", "C:\\config.toml", "[mcp_servers.node_repl]\ncommand = \"node_repl.exe\"\n")]));
+        Assert.Null(Advisor.FindConfig("server.mjs", [new ConfigFile("Claude Code", "C:\\.claude.json", """{ "mcpServers": { "a": { "args": ["x.js"] } } }""")]));
+    }
+
+    [Fact]
+    public void A_common_name_or_part_of_a_word_never_picks_a_server_to_turn_off()
+    {
+        // "index.js" is in every locally built server; "rea" is inside "already" and "create".
+        var cfg = new ConfigFile("Claude Code", "C:\\.claude.json", """{ "mcpServers": { "a": { "args": ["D:\\x\\dist\\index.js"] }, "b": { "args": ["already-create"] } } }""");
+        Assert.Empty(McpServers.Find("index.js", [cfg]));
+        Assert.Empty(McpServers.Find("rea.mjs", [cfg]));
+        Assert.Single(McpServers.Find("rea.mjs", [cfg with { Content = cfg.Content.Replace("already-create", "tools/rea.mjs") }]));
+    }
 
     [Fact]
     public void Advice_only_points_at_the_apps_own_config()

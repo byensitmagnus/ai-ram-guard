@@ -12,6 +12,8 @@ sealed class AppState
 
     public Report? Report { get; set; }
     public IReadOnlyList<Advice> Advice { get; set; } = [];
+    /// <summary>Servers AI RAM Guard switched off and that are still off: the Fixes page offers Undo.</summary>
+    public IReadOnlyList<FixRecord> Fixed { get; set; } = [];
     public CleanResult? Last { get; set; }
     public DateTime LastRun { get; set; }
     public bool GameActive { get; set; }
