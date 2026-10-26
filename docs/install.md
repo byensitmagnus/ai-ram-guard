@@ -23,6 +23,8 @@ The zip is self-contained, so you don't need to install .NET. The small `-framew
 
 Same as clicking Install, without the dialog. Useful for setting up several PCs.
 
+> **Letting an AI agent install it?** A terminal inside the Claude desktop app (the Microsoft Store build) sees its own private copy of your registry and `%LOCALAPPDATA%`. An install run from there looks fine to the agent, but Windows never sees the autostart or the *Settings → Apps* entry, so the app doesn't start after a reboot. Run the installer yourself, or have the agent start it outside the app: `Invoke-CimMethod Win32_Process -MethodName Create -Arguments @{ CommandLine = '"<path>\AiRamGuard.exe" --install' }`.
+
 ## Option 2: build from source
 
 ```powershell
