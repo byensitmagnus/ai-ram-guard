@@ -11,14 +11,14 @@ sealed class TrayContext : ApplicationContext
     readonly NotifyIcon _icon = new() { Visible = true, Text = "AI RAM Guard" };
     readonly System.Windows.Forms.Timer _guardTimer = new(), _sampleTimer = new() { Interval = 60_000 };
     readonly ToolStripMenuItem _status = new() { Enabled = false }, _pause = new("Pause for 1 hour");
-    readonly SynchronizationContext _ui;
+    readonly WindowsFormsSynchronizationContext _ui;
     DateTime _lastToast = DateTime.MinValue;
     MainForm? _form;
     int _samplesSinceSave;
 
     public TrayContext(bool showWindow)
     {
-        _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+        _ui = CaptureUiContext();
         _state.RunNow = force => RunRound(force);
         _state.Pause = Pause;
 
@@ -37,6 +37,18 @@ sealed class TrayContext : ApplicationContext
 
         RunRound(force: false);
         if (showWindow) ShowWindow();
+    }
+
+    internal static WindowsFormsSynchronizationContext CaptureUiContext()
+    {
+        // A non-null context can be the base SynchronizationContext (for example after
+        // a modal dialog). Its Post runs on the thread pool, where a form has no message
+        // loop and freezes. Install the WinForms context before registering signals or
+        // starting an async round, so both use this UI thread's message loop.
+        if (SynchronizationContext.Current is WindowsFormsSynchronizationContext ui) return ui;
+        var context = new WindowsFormsSynchronizationContext();
+        SynchronizationContext.SetSynchronizationContext(context);
+        return context;
     }
 
     ContextMenuStrip BuildMenu()

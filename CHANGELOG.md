@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1 — 2026-11-02
+
+- Fix the app window freezing or failing to open from the notification area or a second launch on some PCs. Window signals and background scan results now always return to the Windows Forms UI thread, even when startup already has a default synchronization context.
+- Add regression tests for opening a window and completing a background scan with both an absent and a default startup context.
+
 ## 1.3.0 (2026-10-26)
 
 The app now does the fix instead of telling you what to do.
