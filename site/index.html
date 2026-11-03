@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Download AI RAM Guard til Windows og Mac. Se AI-programmernes RAM-forbrug og ryd op i efterladte hjælpeprocesser.">
+  <meta name="theme-color" content="#121117">
+  <title>AI RAM Guard — download til Windows og Mac</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="AI RAM Guard"><img src="logo.svg" width="40" height="40" alt=""><span>AI RAM Guard<small>by Byens IT</small></span></a>
+    <nav aria-label="Sprog / language"><button type="button" data-language="da" aria-pressed="true">Dansk</button><button type="button" data-language="en" aria-pressed="false">English</button></nav>
+  </header>
+  <main>
+    <section class="intro" aria-labelledby="title">
+      <h1 id="title" data-copy="title">Mindre RAM-spild.<br>Mere plads til dit arbejde.</h1>
+      <p class="lead" data-copy="lead">Se, hvad Claude, Codex og Cursor bruger, og ryd op i efterladte hjælpeprocesser.</p>
+      <p class="trust" data-copy="trust">Gratis · Open source · Ingen konto</p>
+    </section>
+    <section class="downloads" aria-label="Download">
+      <article class="download windows">
+        <h2>Windows</h2>
+        <p class="requirements" data-copy="windowsRequirements">Windows 10 / 11 · 64-bit</p>
+        <a class="download-button" href="https://github.com/byensitmagnus/ai-ram-guard/releases/latest/download/AiRamGuard-Setup.exe"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4"/></svg><span data-copy="downloadWindows">Download til Windows</span></a>
+        <ol>
+          <li data-copy="windowsStep1">Åbn installationsfilen.</li>
+          <li data-copy="windowsStep2">Klik Installér. Appen åbner automatisk.</li>
+        </ol>
+        <p class="quiet" data-copy="windowsExtra">Ingen udpakning eller .NET-installation. Starter med Windows.</p>
+      </article>
+      <article class="download mac">
+        <h2>Mac <span class="beta">Beta</span></h2>
+        <p class="requirements" data-copy="macRequirements">macOS 13+ · Apple Silicon og Intel</p>
+        <a class="download-button" href="https://github.com/byensitmagnus/ai-ram-guard/releases/latest/download/AiRamGuard-mac-universal.dmg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4"/></svg><span data-copy="downloadMac">Download til Mac</span></a>
+        <ol>
+          <li data-copy="macStep1">Åbn filen, og træk appen til Programmer.</li>
+          <li data-copy="macStep2">Åbn AI RAM Guard fra Programmer.</li>
+        </ol>
+        <p class="quiet" data-copy="macExtra">En native Mac-app med RAM-overblik og oprydning i efterladte hjælpere.</p>
+        <a class="first-open" href="#first-open" data-copy="macFirstOpen">Læs om første åbning af Mac-betaen</a>
+      </article>
+    </section>
+    <section class="preview" aria-labelledby="preview-title">
+      <div class="preview-heading"><h2 id="preview-title" data-copy="previewTitle">Overblik, uden at lede efter det.</h2><span data-copy="previewCaption">Windows-versionen</span></div>
+      <img src="screenshot-overview.png" width="1164" height="821" alt="AI RAM Guards Windows-vindue viser RAM pr. AI-app, ledig hukommelse og forslag til rettelser." loading="lazy">
+    </section>
+    <section class="help" aria-labelledby="help-title">
+      <h2 id="help-title" data-copy="helpTitle">Godt at vide</h2>
+      <details id="first-open"><summary data-copy="firstOpenTitle">Windows eller Mac beder om at godkende appen</summary><div><p data-copy="firstOpenWindows">Windows: Hvis SmartScreen viser en advarsel, kontrollér, at filen kommer fra dette GitHub-projekt. Vælg Flere oplysninger → Kør alligevel, hvis du vil fortsætte.</p><p data-copy="firstOpenMac">Mac-betaen er endnu ikke notariseret af Apple. Efter første åbningsforsøg skal du gå til Systemindstillinger → Anonymitet & sikkerhed → Åbn alligevel. Du skal kun godkende appen første gang.</p><p><a href="https://support.apple.com/102445" data-copy="appleHelp">Apples vejledning til at åbne en app</a></p></div></details>
+      <details><summary data-copy="differenceTitle">Kan Windows- og Mac-versionen det samme?</summary><div><p data-copy="difference">Begge viser AI-programmernes RAM-forbrug og kan lukke efterladte hjælpere, som de tidligere har set en AI-app starte. Windows har også config-rettelser med fortryd, hukommelsestrim og cacheflytning. Mac-betaen har RAM- og diskoverblik. macOS understøtter ikke Windows' hukommelsestrim.</p></div></details>
+      <details><summary data-copy="updateTitle">Jeg har allerede en ældre version</summary><div><p data-copy="update">Installer den nye version ovenpå. Dine indstillinger og din historik bliver bevaret. Du kan fjerne programmet igen under Windows' Installerede apps eller ved at flytte Mac-appen til Papirkurv.</p></div></details>
+      <p class="more"><a href="https://github.com/byensitmagnus/ai-ram-guard/issues" data-copy="report">Meld en fejl</a><a href="https://github.com/byensitmagnus/ai-ram-guard/releases" data-copy="allDownloads">Alle downloads og versionsnoter</a></p>
+    </section>
+  </main>
+  <footer><span>AI RAM Guard · <a href="https://byens-it.dk">Byens IT</a></span><a href="https://github.com/byensitmagnus/ai-ram-guard">GitHub · MIT</a></footer>
+</body>
+</html>

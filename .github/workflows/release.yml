@@ -1,14 +1,11 @@
 name: Release
-
 on:
   push:
-    tags: ["v*"]
-
+    tags: ['v*']
 permissions:
-  contents: write
-
+  contents: read
 jobs:
-  release:
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,36 +13,91 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet test -c Release
-      - name: Publish self-contained
+      - name: Publish Windows apps
         run: |
           dotnet publish src/AiRamGuard.Tray -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/sc
-          dotnet publish src/AiRamGuard.Cli  -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=true -o out/sc
-      - name: Smoke-test the trimmed CLI
+          dotnet publish src/AiRamGuard.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=true -o out/sc
+      - name: Smoke-test CLI
         run: |
           ./out/sc/airg.exe scan --json | Out-Null; if ($LASTEXITCODE) { exit 1 }
           ./out/sc/airg.exe disk --json | Out-Null; if ($LASTEXITCODE) { exit 1 }
-      - name: Publish framework-dependent
-        run: |
-          dotnet publish src/AiRamGuard.Tray -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true -o out/fd
-          dotnet publish src/AiRamGuard.Cli  -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true -o out/fd
-      - name: Zip
+      - name: Build one-file installer
         shell: pwsh
         run: |
-          Compress-Archive out/sc/*.exe AiRamGuard-win-x64.zip
-          Compress-Archive out/fd/*.exe AiRamGuard-win-x64-framework.zip
-          Get-FileHash *.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content SHA256SUMS.txt
-      - name: Release notes from CHANGELOG
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' "/DAppVersion=$version" "/DSourceDir=$pwd\out\sc" "/DOutputDir=$pwd\out\release" packaging/windows/setup.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Compress-Archive out/sc/*.exe out/release/AiRamGuard-win-x64.zip
+      - name: Verify clean installer and uninstaller
         shell: pwsh
         run: |
-          $v = "${{ github.ref_name }}".TrimStart('v')
-          $c = Get-Content CHANGELOG.md -Raw
-          $notes = if ($c -match "(?s)## $([regex]::Escape($v))[^\n]*\n(.*?)(?=\n## |\z)") { $Matches[1].Trim() } else { "" }
-          Set-Content notes.md $notes
+          $setup = Start-Process ./out/release/AiRamGuard-Setup.exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -PassThru -Wait
+          if ($setup.ExitCode -ne 0) { throw "Installer failed: $($setup.ExitCode)" }
+          $appDir = Join-Path $env:LOCALAPPDATA 'Programs/AiRamGuard'
+          & "$appDir/airg.exe" --version
+          if ($LASTEXITCODE) { throw 'Installed CLI failed' }
+          $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').'AI RAM Guard'
+          if (!$run.Contains('AiRamGuard.exe')) { throw 'Autostart missing' }
+          $uninstall = Start-Process "$appDir/unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -PassThru -Wait
+          if ($uninstall.ExitCode -ne 0) { throw 'Uninstaller failed' }
+          if (Test-Path "$appDir/AiRamGuard.exe") { throw 'Uninstaller left app behind' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: out/release/*
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test --package-path macos
+      - name: Build Mac app and disk image
+        run: bash packaging/macos/package.sh
+      - name: Smoke-test packaged Mac app
+        run: |
+          "out/mac/AI RAM Guard.app/Contents/MacOS/AiRamGuardMac" --scan-json > /tmp/airg-scan.json
+          python3 -m json.tool /tmp/airg-scan.json > /dev/null
+          "out/mac/AI RAM Guard.app/Contents/MacOS/AiRamGuardMac" --smoke-test
+          codesign --verify --deep --strict "out/mac/AI RAM Guard.app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-mac
+          path: |
+            out/mac/AiRamGuard-mac-universal.dmg
+            out/mac/AiRamGuard-mac-universal.zip
+  publish:
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: out/release
+      - name: Checksums and release notes
+        run: |
+          cd out/release
+          sha256sum *.exe *.zip *.dmg > SHA256SUMS.txt
+          cd ../..
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          version = os.environ['GITHUB_REF_NAME'].lstrip('v')
+          changelog = Path('CHANGELOG.md').read_text()
+          match = re.search(r'(?sm)^## '+re.escape(version)+r'[^\n]*\n(.*?)(?=^## |\Z)', changelog)
+          Path('notes.md').write_text(match.group(1).strip() if match else '')
+          PY
       - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            AiRamGuard-win-x64.zip
-            AiRamGuard-win-x64-framework.zip
-            SHA256SUMS.txt
+          files: out/release/*
           body_path: notes.md
           generate_release_notes: true
+  page:
+    needs: publish
+    uses: ./.github/workflows/pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

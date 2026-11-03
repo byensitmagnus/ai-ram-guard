@@ -18,7 +18,7 @@ static class Installer
     public static bool IsInstalled => string.Equals(Path.GetDirectoryName(Environment.ProcessPath), Dir, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Copies this exe (and airg.exe next to it) into place, then starts the installed copy.</summary>
-    public static void Install()
+    public static void Install(bool showWindow = false)
     {
         // An older installed copy may be running: ask it to exit so its files can be replaced.
         if (Signals.Send(Signals.Exit))
@@ -50,12 +50,13 @@ static class Installer
             k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
             k.SetValue("EstimatedSize", (int)(new DirectoryInfo(Dir).EnumerateFiles().Sum(f => f.Length) / 1024), RegistryValueKind.DWord);
         }
-        Process.Start(new ProcessStartInfo(InstalledExe, "--background") { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo(InstalledExe, showWindow ? "" : "--background") { UseShellExecute = true });
         Log.Write($"installed {MainForm.Version} to %LOCALAPPDATA%\\Programs\\AiRamGuard");
     }
 
     public static void ConfirmUninstall()
     {
+        if (UninstallWithSetup(quiet: false)) return;
         if (MessageBox.Show("Remove AI RAM Guard from this PC?\n\nYour settings and history stay in your user folder.", "AI RAM Guard",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         Uninstall();
@@ -65,6 +66,7 @@ static class Installer
     /// <summary>Removes shortcut, autostart and the Apps entry, then deletes the folder once this process has exited.</summary>
     public static void Uninstall()
     {
+        if (UninstallWithSetup(quiet: true)) return;
         Signals.Send(Signals.Exit);
         Autostart.Enabled = false;
         File.Delete(Shortcut);
@@ -75,6 +77,15 @@ static class Installer
         {
             CreateNoWindow = true, UseShellExecute = false, WorkingDirectory = Path.GetTempPath(),
         });
+    }
+
+    static bool UninstallWithSetup(bool quiet)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(UninstallKey + "_is1");
+        var exe = Path.Combine(Dir, "unins000.exe");
+        if (key is null || !File.Exists(exe)) return false;
+        Process.Start(new ProcessStartInfo(exe, quiet ? "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" : "") { UseShellExecute = true });
+        return true;
     }
 
     static void CreateShortcut(string lnk, string target)

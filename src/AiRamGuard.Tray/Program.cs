@@ -17,7 +17,8 @@ static class Program
         if (args is ["--uninstall", "--quiet"]) { Installer.Uninstall(); return 0; } // package managers: no dialog
         if (args is ["--install"]) { Installer.Install(); return 0; } // silent install for scripts and package managers
 
-        using var single = new Mutex(true, @"Local\AiRamGuard.Tray", out var first);
+        using var single = new Mutex(false, @"Local\AiRamGuard.Tray");
+        var first = TryAcquire(single);
         var settings = AppSettings.Load();
         if (!first && (Installer.IsInstalled || settings.Portable))
         {
@@ -40,7 +41,7 @@ static class Program
                 if (first) single.ReleaseMutex();
                 try
                 {
-                    Installer.Install();
+                    Installer.Install(showWindow: true);
                     return 0;
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
@@ -56,5 +57,13 @@ static class Program
 
         Application.Run(new TrayContext(showWindow: !args.Contains("--background")));
         return 0;
+    }
+
+    internal static bool TryAcquire(Mutex mutex)
+    {
+        // An installer can have released ownership but still hold the named object.
+        // Object existence alone does not mean another app is running.
+        try { return mutex.WaitOne(0); }
+        catch (AbandonedMutexException) { return true; }
     }
 }

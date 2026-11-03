@@ -1,15 +1,12 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
-
 permissions:
   contents: read
-
 jobs:
-  test:
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,3 +15,19 @@ jobs:
           dotnet-version: 10.0.x
       - run: dotnet build -c Release
       - run: dotnet test -c Release --no-build
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Mac engine
+        run: swift test --package-path macos
+      - name: Build and smoke-test universal Mac app
+        run: |
+          bash packaging/macos/package.sh
+          "out/mac/AI RAM Guard.app/Contents/MacOS/AiRamGuardMac" --scan-json > /tmp/airg-scan.json
+          python3 -m json.tool /tmp/airg-scan.json > /dev/null
+          "out/mac/AI RAM Guard.app/Contents/MacOS/AiRamGuardMac" --smoke-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-preview
+          path: out/mac/*.dmg
