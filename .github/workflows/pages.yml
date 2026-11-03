@@ -1,7 +1,9 @@
 name: Download page
 on:
   workflow_dispatch:
-  workflow_call:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/pages.yml']
 permissions:
   contents: read
   pages: write

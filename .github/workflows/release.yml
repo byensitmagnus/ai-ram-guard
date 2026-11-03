@@ -111,10 +111,3 @@ jobs:
           files: out/release/*
           body_path: notes.md
           generate_release_notes: true
-  page:
-    needs: publish
-    uses: ./.github/workflows/pages.yml
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
