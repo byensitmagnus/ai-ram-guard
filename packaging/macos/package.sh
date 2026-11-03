@@ -19,7 +19,7 @@ for ARCH in arm64 x86_64; do
   cp "$BIN/AiRamGuardMac" "$STAGE/AiRamGuardMac-$ARCH"
 done
 lipo -create "$STAGE/AiRamGuardMac-arm64" "$STAGE/AiRamGuardMac-x86_64" -output "$APP/Contents/MacOS/AiRamGuardMac"
-lipo -verify_arch arm64 x86_64 "$APP/Contents/MacOS/AiRamGuardMac"
+lipo "$APP/Contents/MacOS/AiRamGuardMac" -verify_arch arm64 x86_64
 chmod +x "$APP/Contents/MacOS/AiRamGuardMac"
 
 cat > "$APP/Contents/Info.plist" <<PLIST

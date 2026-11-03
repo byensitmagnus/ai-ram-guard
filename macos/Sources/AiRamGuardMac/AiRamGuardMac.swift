@@ -88,6 +88,13 @@ struct AiRamGuardMacApp: App {
     @StateObject private var model: GuardModel
 
     init() {
+        if CommandLine.arguments.contains("--smoke-test") {
+            // Also expires if SwiftUI never creates the first window or the UI thread stalls.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 40) {
+                FileHandle.standardError.write(Data("UI startup smoke test timed out\n".utf8))
+                exit(2)
+            }
+        }
         if CommandLine.arguments.contains("--scan-json") {
             let semaphore = DispatchSemaphore(value: 0)
             Task.detached {

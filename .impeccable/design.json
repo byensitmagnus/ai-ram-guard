@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-03T14:43:56.942Z",
+  "title": "Design System: AI RAM Guard website",
+  "extensions": {
+    "colorMeta": {
+      "brand": {
+        "role": "primary",
+        "displayName": "Brand magenta",
+        "tonalRamp": [
+          "oklch(15% 0.0667 325.56)",
+          "oklch(25% 0.1333 325.56)",
+          "oklch(36% 0.2000 325.56)",
+          "oklch(48% 0.2000 325.56)",
+          "oklch(60% 0.2000 325.56)",
+          "oklch(72% 0.2000 325.56)",
+          "oklch(84% 0.1280 325.56)",
+          "oklch(95% 0.0400 325.56)"
+        ]
+      },
+      "link": {
+        "role": "primary",
+        "displayName": "Light magenta",
+        "tonalRamp": [
+          "oklch(15% 0.0540 325.49)",
+          "oklch(25% 0.1080 325.49)",
+          "oklch(36% 0.1620 325.49)",
+          "oklch(48% 0.1620 325.49)",
+          "oklch(60% 0.1620 325.49)",
+          "oklch(72% 0.1620 325.49)",
+          "oklch(84% 0.1037 325.49)",
+          "oklch(95% 0.0324 325.49)"
+        ]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Canvas",
+        "tonalRamp": [
+          "oklch(15% 0.0041 292.78)",
+          "oklch(25% 0.0082 292.78)",
+          "oklch(36% 0.0123 292.78)",
+          "oklch(48% 0.0123 292.78)",
+          "oklch(60% 0.0123 292.78)",
+          "oklch(72% 0.0123 292.78)",
+          "oklch(84% 0.0078 292.78)",
+          "oklch(95% 0.0025 292.78)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Raised neutral",
+        "tonalRamp": [
+          "oklch(15% 0.0058 295.14)",
+          "oklch(25% 0.0117 295.14)",
+          "oklch(36% 0.0175 295.14)",
+          "oklch(48% 0.0175 295.14)",
+          "oklch(60% 0.0175 295.14)",
+          "oklch(72% 0.0175 295.14)",
+          "oklch(84% 0.0112 295.14)",
+          "oklch(95% 0.0035 295.14)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Main ink",
+        "tonalRamp": [
+          "oklch(15% 0.0051 302.56)",
+          "oklch(25% 0.0101 302.56)",
+          "oklch(36% 0.0152 302.56)",
+          "oklch(48% 0.0152 302.56)",
+          "oklch(60% 0.0152 302.56)",
+          "oklch(72% 0.0152 302.56)",
+          "oklch(84% 0.0097 302.56)",
+          "oklch(95% 0.0030 302.56)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted ink",
+        "tonalRamp": [
+          "oklch(15% 0.0078 302.82)",
+          "oklch(25% 0.0156 302.82)",
+          "oklch(36% 0.0235 302.82)",
+          "oklch(48% 0.0235 302.82)",
+          "oklch(60% 0.0235 302.82)",
+          "oklch(72% 0.0235 302.82)",
+          "oklch(84% 0.0150 302.82)",
+          "oklch(95% 0.0047 302.82)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Divider",
+        "tonalRamp": [
+          "oklch(15% 0.0091 303.17)",
+          "oklch(25% 0.0181 303.17)",
+          "oklch(36% 0.0272 303.17)",
+          "oklch(48% 0.0272 303.17)",
+          "oklch(60% 0.0272 303.17)",
+          "oklch(72% 0.0272 303.17)",
+          "oklch(84% 0.0174 303.17)",
+          "oklch(95% 0.0054 303.17)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Section headline",
+        "purpose": "Recurring platform, preview and help headings."
+      },
+      "action": {
+        "displayName": "Action label",
+        "purpose": "Download links."
+      },
+      "instruction": {
+        "displayName": "Instruction",
+        "purpose": "Numbered installation steps; help text uses a slightly looser line-height."
+      },
+      "quiet": {
+        "displayName": "Quiet supporting text",
+        "purpose": "Notes adjacent to download actions."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "anchor-scroll",
+        "value": "scroll-behavior: smooth",
+        "purpose": "Anchor navigation; prefers-reduced-motion: reduce switches to auto. No transition-duration tokens exist."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary download",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Filled download action, 52px minimum height; white inline SVG and text.",
+      "html": "<a class=\"ds-primary\" href=\"#download\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" aria-hidden=\"true\"><path d=\"M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4\"/></svg><span>Download til Windows</span></a>",
+      "css": ".ds-primary{font-family:\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif;min-height:52px;display:inline-flex;align-items:center;justify-content:center;gap:12px;padding:12px 20px;border:1px solid var(--brand,#ba01c4);border-radius:8px;background:var(--brand,#ba01c4);color:#fff;text-decoration:none;font-size:16px;font-weight:600}.ds-primary:hover{background:#9c00a6;border-color:#9c00a6;text-decoration:none}.ds-primary:focus-visible,.ds-secondary:focus-visible,.ds-language button:focus-visible,.ds-disclosure summary:focus-visible,.ds-disclosure a:focus-visible{outline:3px solid var(--link,#ed92f1);outline-offset:5px}@media(max-width:640px){.ds-primary{width:100%}}"
+    },
+    {
+      "name": "Secondary download",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Outlined alternate download action; platform detection decides which action is secondary.",
+      "html": "<a class=\"ds-secondary\" href=\"#download\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" aria-hidden=\"true\"><path d=\"M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4\"/></svg><span>Download til Mac</span></a>",
+      "css": ".ds-secondary{font-family:\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif;min-height:52px;display:inline-flex;align-items:center;justify-content:center;gap:12px;padding:12px 20px;border:1px solid #65586e;border-radius:8px;background:transparent;color:#fff;text-decoration:none;font-size:16px;font-weight:600}.ds-secondary:hover{background:var(--surface,#1c1a23);border-color:var(--link,#ed92f1);text-decoration:none}.ds-primary:focus-visible,.ds-secondary:focus-visible,.ds-language button:focus-visible,.ds-disclosure summary:focus-visible,.ds-disclosure a:focus-visible{outline:3px solid var(--link,#ed92f1);outline-offset:5px}@media(max-width:640px){.ds-secondary{width:100%}}"
+    },
+    {
+      "name": "Language selector",
+      "kind": "nav",
+      "refersTo": "language",
+      "description": "Native buttons with aria-pressed selection; runtime language switching belongs to site/app.js.",
+      "html": "<nav class=\"ds-language\" aria-label=\"Sprog / language\"><button type=\"button\" aria-pressed=\"true\">Dansk</button><button type=\"button\" aria-pressed=\"false\">English</button></nav>",
+      "css": ".ds-language{display:flex;gap:4px}.ds-language button{font-family:\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif;cursor:pointer;border:0;background:transparent;color:var(--muted,#b5afbf);padding:10px;border-radius:6px;font-size:14px}.ds-language button[aria-pressed=true]{background:var(--surface,#1c1a23);color:var(--ink,#f3effa)}.ds-language button:hover{color:#fff}.ds-primary:focus-visible,.ds-secondary:focus-visible,.ds-language button:focus-visible,.ds-disclosure summary:focus-visible,.ds-disclosure a:focus-visible{outline:3px solid var(--link,#ed92f1);outline-offset:5px}@media(max-width:640px){.ds-language button{padding:9px 7px;font-size:13px}}"
+    },
+    {
+      "name": "Beta status",
+      "kind": "chip",
+      "refersTo": "beta",
+      "description": "Noninteractive status label alongside a platform heading.",
+      "html": "<span class=\"ds-beta\">Beta</span>",
+      "css": ".ds-beta{font-family:\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif;display:inline-block;vertical-align:middle;font-size:12px;line-height:22px;letter-spacing:0;font-weight:500;border:1px solid var(--line,#393342);border-radius:5px;padding:0 7px;color:var(--muted,#b5afbf);margin-left:6px}"
+    },
+    {
+      "name": "Help disclosure",
+      "kind": "custom",
+      "description": "Native details/summary with divider boundaries and muted expanded copy.",
+      "html": "<details class=\"ds-disclosure\"><summary>Jeg har allerede en ældre version</summary><div><p>Installer den nye version ovenpå. Dine indstillinger og din historik bliver bevaret.</p><a href=\"#download\">Alle downloads og versionsnoter</a></div></details>",
+      "css": ".ds-disclosure{font-family:\"Segoe UI\",-apple-system,BlinkMacSystemFont,Arial,sans-serif;border-block:1px solid var(--line,#393342);color:var(--ink,#f3effa)}.ds-disclosure summary{cursor:pointer;padding-block:20px;font-size:16px;line-height:1.5;font-weight:500}.ds-disclosure>div{padding:0 24px 16px 0;max-width:75ch}.ds-disclosure p{color:var(--muted,#b5afbf);font-size:15px;line-height:1.7;margin:0 0 14px}.ds-disclosure a{color:var(--link,#ed92f1);text-underline-offset:4px}.ds-disclosure a:hover{text-decoration-thickness:2px}.ds-primary:focus-visible,.ds-secondary:focus-visible,.ds-language button:focus-visible,.ds-disclosure summary:focus-visible,.ds-disclosure a:focus-visible{outline:3px solid var(--link,#ed92f1);outline-offset:5px}@media(max-width:640px){.ds-disclosure summary{font-size:15px}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "AI RAM Guard's existing app identity",
+    "overview": "This records the shipped website, not the whole native app. It inherits the existing logo, Byens IT attribution, dark neutral canvas and magenta action color. The confirmed direction is an extension of that identity; no replacement brand was created.\n\nThe implementation uses clear text hierarchy, open spacing and thin dividers. The download page composition and installation story remain in the surface brief rather than becoming requirements for every future screen.",
+    "keyCharacteristics": [
+      "Dark neutral canvas with one magenta action accent.",
+      "Readable utility typography and restrained rounded controls.",
+      "Flat, divider-led groups with visible focus treatment."
+    ],
+    "rules": [
+      {
+        "name": "The Action Accent Rule",
+        "body": "Use the brand fill for the primary action; supporting links use the lighter link color.",
+        "section": "colors"
+      },
+      {
+        "name": "The Flat Surface Rule",
+        "body": "Preserve flat resting surfaces and use the existing neutral border and tone vocabulary to separate groups.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do preserve the supplied logo, AI RAM Guard identity and Byens IT attribution.",
+      "Do use the Action Accent Rule and visible keyboard focus.",
+      "Do retain the website's stacked mobile behavior and proportionally scaled imagery.",
+      "Do keep supporting text legible against the dark canvas."
+    ],
+    "donts": [
+      "Don't turn this page's column count or content order into a system-wide layout rule.",
+      "Don't infer website tokens from colors embedded inside the app screenshot.",
+      "Don't promote the inherited display-font exception into a reusable display rule."
+    ]
+  }
+}
