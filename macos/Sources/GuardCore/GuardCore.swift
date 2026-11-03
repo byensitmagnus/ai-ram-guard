@@ -104,7 +104,8 @@ public enum Analyzer {
         let command = process.command
         let first = String(command.split(separator: " ").first ?? "")
         var name = URL(fileURLWithPath: first).lastPathComponent.lowercased()
-        if command.hasPrefix("/"), let marker = command.range(of: ".app/Contents/MacOS/") {
+        if command.hasPrefix("/"), let marker = command.range(of: ".app/Contents/MacOS/"),
+           !command[..<marker.lowerBound].contains(" /") {
             let bundle = String(command[..<marker.lowerBound])
             // Only a main executable: nested Helper.app processes belong to their ancestor instead.
             name = URL(fileURLWithPath: bundle).lastPathComponent.lowercased()
@@ -194,7 +195,9 @@ public actor GuardEngine {
         guard !loaded else { return }
         try FileManager.default.createDirectory(at: dataFolder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         guard dataFolder.resolvingSymlinksInPath().standardizedFileURL == dataFolder.standardizedFileURL else { throw GuardError.unsafeDataFolder }
-        if let data = try? Data(contentsOf: lineageFile), let state = try? JSONDecoder().decode(LineageState.self, from: data) {
+        let attributes = try? lineageFile.resourceValues(forKeys: [.isSymbolicLinkKey, .fileSizeKey])
+        if attributes?.isSymbolicLink != true, (attributes?.fileSize ?? 0) < 1_000_000,
+           let data = try? Data(contentsOf: lineageFile), let state = try? JSONDecoder().decode(LineageState.self, from: data) {
             observed = Set(state.seen); originalOwners = state.owners
         }
         loaded = true

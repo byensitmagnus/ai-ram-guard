@@ -82,6 +82,7 @@ final class GuardCoreTests: XCTestCase {
         XCTAssertNil(ProcessReader.parseLine("10 1 502 2048 /bin/sh", identity: { _ in stamp }, userID: 501))
         XCTAssertNil(ProcessReader.parseLine("10 1 501 18446744073709551615 /bin/sh", identity: { _ in stamp }, userID: 501))
         XCTAssertNil(ProcessReader.parseLine("nonsense", identity: { _ in stamp }, userID: 501))
+        XCTAssertNil(Analyzer.agentName(process(20, 1, "/usr/bin/node /Applications/Claude.app/Contents/MacOS/Claude")))
     }
 
     func testDuplicatesCountCopiesAndSnapshotJSONDoesNotContainCommands() throws {

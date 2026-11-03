@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0 — 2026-11-03
+
+- Direct download page in Danish and English, with one Windows installer and one universal Mac download. GitHub README now starts with downloads and two installation steps.
+- New Windows Setup EXE: no ZIP extraction, per-user installation, Start menu shortcut, autostart, CLI on PATH and a standard uninstaller. Opens the app after interactive installation.
+- Fix a startup race: a released installer mutex can still exist while the installed app starts. The app now checks actual ownership instead of treating object existence as a running instance. Two regression tests cover it.
+- First native Mac beta for macOS 13+, Apple Silicon and Intel. Memory/process overview, duplicate helper counts, automatic or manual cleanup of previously observed orphan helpers, disk usage, pause, menu bar and optional login startup. No Windows-style memory trimming, config rewriting or cache moves on Mac.
+- Mac helper cleanup rechecks PID, UID, microsecond start identity and live app ancestry, including the original owning app. It never treats an arbitrary orphan process as safe to close.
+- Universal Mac DMG/ZIP with an ad-hoc integrity signature. This beta is not Apple-notarized and requires explicit first-open approval; the page and installation guide say so before download. Developer ID/notarization support is ready for configured credentials.
+- CI builds and tests Windows and Mac. Release checks include clean Windows installation/window startup/uninstallation and a real Mac application-start smoke test.
 ## 1.3.1 — 2026-11-02
 
 - Fix the app window freezing or failing to open from the notification area or a second launch on some PCs. Window signals and background scan results now always return to the Windows Forms UI thread, even when startup already has a default synchronization context.

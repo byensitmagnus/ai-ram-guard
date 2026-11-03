@@ -1,52 +1,33 @@
-<p align="center">
-  <img src="assets/banner.png" alt="AI RAM Guard" width="100%">
-</p>
+# AI RAM Guard
 
-<p align="center"><a href="README.md">English</a> · <b>Dansk</b></p>
+Se, hvor meget RAM dine AI-værktøjer bruger, og ryd op i efterladte hjælpeprocesser.
 
-# AI RAM Guard: når Claude Code, Codex og MCP-servere æder din RAM
+**[Download til Windows](https://github.com/byensitmagnus/ai-ram-guard/releases/latest/download/AiRamGuard-Setup.exe)** · **[Download til Mac — beta](https://github.com/byensitmagnus/ai-ram-guard/releases/latest/download/AiRamGuard-mac-universal.dmg)**
 
-**AI RAM Guard** er et gratis open source-program til Windows. Det viser, hvor meget RAM dine AI-værktøjer faktisk bruger. Det finder **dublerede og efterladte MCP-servere**, **retter årsagen med ét klik** (og kan fortryde det), og giver hukommelsen tilbage uden at lukke det, du arbejder i.
-
-> Det startede med en gaming-PC med 32 GB RAM, der løb tør midt i et spil. Synderen var ikke spillet. Det var **48 processer af én MCP-server** og **25 af en anden**, startet af AI-sessioner i baggrunden.
-
-<p align="center"><img src="assets/demo.gif" alt="Rundtur i AI RAM Guard: overblik med RAM-ring og RAM pr. AI-program, rettelser, disk, aktivitet og indstillinger" width="880"></p>
-
-## Hvorfor sker det?
-
-Hver AI-session (en Claude Code-chat, en Codex-tråd, et Cursor-vindue) **starter sin egen kopi af alle dine MCP-servere**. Hver kopi er en Node.js- eller Python-proces på 100–250 MB. Ti sessioner med fem MCP-servere giver 50 processer, ofte med en ekstra `npx`-proces foran hver.
-
-Kendte fejlrapporter, som AI RAM Guard afhjælper på din PC, indtil de er rettet: [claude-code#101376](https://github.com/anthropics/claude-code/issues/101376), [#90362](https://github.com/anthropics/claude-code/issues/90362), [#58918](https://github.com/anthropics/claude-code/issues/58918) og [codex#32797](https://github.com/openai/codex/issues/32797). Hele listen står i den [engelske README](README.md#fixes-these-issues).
-
-## Det gør AI RAM Guard
-
-- 📊 **Overblik:** RAM-ring, graf over det seneste døgn og RAM pr. AI-program med MCP-servere.
-- 🔧 **Rettelser:** finder årsagen og retter den. Fx kører "rea-agents 11× under Claude": **Turn off** fjerner den fra `~/.claude.json` med backup, og **Turn on again** sætter den tilbage præcis som før. Efterladte processer lukkes med ét klik, og et grådigt program får et loft. Det, kun du kan ændre (et plugin), står for sig med besked om hvor.
-- 🧹 **Rydder op:** lukker MCP-servere, som den har set et AI-program starte, når programmet er væk. Det, du selv har startet, rører den ikke.
-- 🪶 **Frigør RAM uden at lukke noget:** flytter ubrugt AI-hukommelse til swapfilen, når der er for lidt fri RAM. Programmet, du bruger, røres aldrig.
-- 🎯 **Loft pr. program**, ⏸️ **pause i en time** og 🎮 **spiltilstand** med strammere grænse, mens et spil kører i fuld skærm.
-- 🐢 **Lavere prioritet i baggrunden:** AI-programmer, du ikke bruger, giver først slip på RAM, og under spil får de også mindre CPU. Det sættes tilbage, så snart du skifter til dem.
-- 💾 **Disk:** viser, hvor AI-værktøjer og deres cache skriver. Rydder gamle temp-filer op (kun dem, ingen har rørt i 7 dage), og flytter en cache væk fra systemdrevet med ét klik. Kan fortrydes.
-- 📦 Rigtig installation uden administratorrettigheder, og kommandolinjen `airg` til scripts.
+[Enkel downloadside](https://byensitmagnus.github.io/ai-ram-guard/) · [English](README.md)
 
 ## Kom i gang
 
-1. Hent `AiRamGuard-win-x64.zip` under [Releases](https://github.com/byensitmagnus/ai-ram-guard/releases/latest) og pak den ud.
-2. Start `AiRamGuard.exe`, og klik **Install**.
+| Windows 10 / 11, 64-bit | Mac, macOS 13 eller nyere |
+| --- | --- |
+| Hent **AiRamGuard-Setup.exe**. Åbn filen, og klik **Installér**. | Hent **DMG-filen**. Åbn den, og træk **AI RAM Guard** til **Programmer**. |
+| Appen åbner automatisk og starter med Windows. Ingen udpakning eller .NET-installation. | Åbn appen fra Programmer. Samme download virker på Apple Silicon og Intel. Autostart er valgfri. |
 
-Så ligger den i Start-menuen, starter med Windows og kan fjernes under *Indstillinger → Apps*.
+**Godkendelse første gang:** Downloadfilerne har ikke et kommercielt signeringscertifikat. Windows kan vise SmartScreen. **Mac-betaen er endnu ikke notariseret af Apple**: efter første åbningsforsøg vælges *Systemindstillinger → Anonymitet & sikkerhed → Åbn alligevel*. [Hjælp til første åbning](docs/install.md#first-open-approval).
 
-```text
-airg scan     RAM pr. AI-program
-airg advise   hvad der skal rettes, så det ikke sker igen
-airg clean    ryd op nu
-airg disk     hvor AI-værktøjer fylder på disken
-```
+## Det får du
 
-## Om
+- RAM-forbrug for Claude, Codex / ChatGPT, Cursor og deres hjælpere.
+- Overblik over dublerede MCP-servere og efterladte processer.
+- Oprydning i hjælpere, appen tidligere har set et AI-program starte, når programmet er væk. Aktive sessioner bliver åbne.
+- Diskoverblik over AI-værktøjer og deres cache.
 
-Lavet af **Magnus Steinmeier Olsen**, [Byens IT](https://byens-it.dk). Vi bygger gaming-PC'er og bruger selv mange AI-agenter. Værktøjet kom ud af at rette vores egne maskiner.
+**Windows** har også config-rettelser med backup og fortryd, hukommelsestrim, spiltilstand og cacheflytning. **Mac-betaen** har RAM-overblik, oprydning i kendte efterladte hjælpere og diskoverblik. Windows' config-editor, cacheflytning og hukommelsestrim findes ikke i Mac-betaen. [Mac-detaljer](macos/README.md).
 
-Har det sparet dig RAM? Giv repoet en ⭐. Så kan andre finde det.
+![AI RAM Guard på Windows](assets/screenshot-overview.png)
 
-MIT © 2026 Magnus Steinmeier Olsen / Byens IT
+## Hjælp
+
+[Installation og opdatering](docs/install.md) · [Kommandolinje](docs/cli.md) · [Sådan virker det](docs/how-it-works.md) · [Meld en fejl](https://github.com/byensitmagnus/ai-ram-guard/issues) · [Alle downloads](https://github.com/byensitmagnus/ai-ram-guard/releases)
+
+Gratis, open source, ingen konto og ingen telemetri. Lavet af **Magnus Steinmeier Olsen / [Byens IT](https://byens-it.dk)**. MIT-licens.

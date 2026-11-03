@@ -1,5 +1,11 @@
 name: Release
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build without publishing
+        default: '1.4.0'
+        required: true
   push:
     tags: ['v*']
 permissions:
@@ -24,7 +30,7 @@ jobs:
       - name: Build one-file installer
         shell: pwsh
         run: |
-          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $version = '${{ inputs.version || github.ref_name }}'.TrimStart('v')
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' "/DAppVersion=$version" "/DSourceDir=$pwd\out\sc" "/DOutputDir=$pwd\out\release" packaging/windows/setup.iss
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Compress-Archive out/sc/*.exe out/release/AiRamGuard-win-x64.zip
@@ -38,6 +44,15 @@ jobs:
           if ($LASTEXITCODE) { throw 'Installed CLI failed' }
           $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').'AI RAM Guard'
           if (!$run.Contains('AiRamGuard.exe')) { throw 'Autostart missing' }
+          $app = Start-Process "$appDir/AiRamGuard.exe" -PassThru
+          $deadline = (Get-Date).AddSeconds(20)
+          do { Start-Sleep -Milliseconds 250; $app.Refresh() } while (!$app.HasExited -and !$app.MainWindowHandle -and (Get-Date) -lt $deadline)
+          if ($app.HasExited -or !$app.MainWindowHandle -or !$app.Responding) { throw 'First app window failed to open or respond' }
+          $second = Start-Process "$appDir/AiRamGuard.exe" -PassThru -Wait
+          if ($second.ExitCode -ne 0) { throw 'Second launch failed' }
+          $exitSignal = [System.Threading.EventWaitHandle]::OpenExisting('Local\AiRamGuard.Exit')
+          $null = $exitSignal.Set(); $exitSignal.Dispose()
+          if (!$app.WaitForExit(10000)) { throw 'App did not exit cleanly' }
           $uninstall = Start-Process "$appDir/unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -PassThru -Wait
           if ($uninstall.ExitCode -ne 0) { throw 'Uninstaller failed' }
           if (Test-Path "$appDir/AiRamGuard.exe") { throw 'Uninstaller left app behind' }
@@ -53,6 +68,7 @@ jobs:
       - name: Build Mac app and disk image
         run: bash packaging/macos/package.sh
       - name: Smoke-test packaged Mac app
+        timeout-minutes: 3
         run: |
           "out/mac/AI RAM Guard.app/Contents/MacOS/AiRamGuardMac" --scan-json > /tmp/airg-scan.json
           python3 -m json.tool /tmp/airg-scan.json > /dev/null
@@ -65,6 +81,7 @@ jobs:
             out/mac/AiRamGuard-mac-universal.dmg
             out/mac/AiRamGuard-mac-universal.zip
   publish:
+    if: startsWith(github.ref, 'refs/tags/')
     needs: [windows, mac]
     runs-on: ubuntu-latest
     permissions:

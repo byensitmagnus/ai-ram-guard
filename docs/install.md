@@ -1,71 +1,54 @@
 # Install AI RAM Guard
 
-## Option 1: download (recommended)
+## Windows: one installer
 
-1. Download `AiRamGuard-win-x64.zip` from the [latest release](https://github.com/byensitmagnus/ai-ram-guard/releases/latest) and unzip it.
-2. Run `AiRamGuard.exe` and click **Install**.
+1. [Download AiRamGuard-Setup.exe](https://github.com/byensitmagnus/ai-ram-guard/releases/latest/download/AiRamGuard-Setup.exe).
+2. Open it and click **Install**. Leave **Open AI RAM Guard** checked on the final screen.
 
-Install copies the app to `%LOCALAPPDATA%\Programs\AiRamGuard`, adds a Start menu shortcut, starts it with Windows, adds that folder to your user `PATH` (so `airg` works in any new terminal) and adds an entry under *Settings → Apps*. Everything is per-user: no admin prompt.
+The app opens after installation. It adds a Start menu shortcut, starts quietly with Windows, puts `airg` on your user PATH and appears in *Settings → Apps*. No admin rights, .NET download or manual unpacking is needed.
 
-Prefer not to install? Click **Just run it**. The app then runs from where you unzipped it and only starts with Windows if you switch that on in *Settings*.
+For an update, run the new installer over the existing version. If the old app is using the files, Setup asks to close it. Settings and history are retained. Remove it using *Settings → Apps → AI RAM Guard*; your history and settings are kept.
 
-Installing a newer version over an older one replaces the running copy. Settings and history are kept.
+Silent deployment: `AiRamGuard-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. Silent installation does not open the window.
 
-The zip is self-contained, so you don't need to install .NET. The small `-framework` zip needs the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
+## Mac beta: one universal download
 
-> **SmartScreen warning?** New open-source apps aren't code-signed yet, so Windows may show "Windows protected your PC". Click **More info → Run anyway**, or build from source (below).
+1. [Download the DMG](https://github.com/byensitmagnus/ai-ram-guard/releases/latest/download/AiRamGuard-mac-universal.dmg).
+2. Open it and drag **AI RAM Guard** to **Applications**.
+3. Open **AI RAM Guard** from Applications. Its window opens, and the menu bar icon stays available when you close the window.
 
-### Silent install
+Requires macOS 13 or newer. The same app supports Apple Silicon and Intel; no .NET runtime or Rosetta is required. Enable **Start at login** in the app if wanted. To update, quit the old app and replace it in Applications. To uninstall, quit it and move it to Trash. Its local data stays unless you remove it separately.
 
-```powershell
-.\AiRamGuard.exe --install
-```
+The Mac beta includes RAM monitoring, duplicate-helper counts, cleanup of verified leftover helpers and disk usage. It does not include Windows working-set trimming, config mutation or cache relocation. [Mac implementation and build instructions](../macos/README.md).
 
-Same as clicking Install, without the dialog. Useful for setting up several PCs.
+## First-open approval
 
-> **Letting an AI agent install it?** A terminal inside the Claude desktop app (the Microsoft Store build) sees its own private copy of your registry and `%LOCALAPPDATA%`. An install run from there looks fine to the agent, but Windows never sees the autostart or the *Settings → Apps* entry, so the app doesn't start after a reboot. Run the installer yourself, or have the agent start it outside the app: `Invoke-CimMethod Win32_Process -MethodName Create -Arguments @{ CommandLine = '"<path>\AiRamGuard.exe" --install' }`.
+These downloads do not yet use a commercial code-signing identity. Do not expect every operating system to open a downloaded build without a security prompt.
 
-## Option 2: build from source
+- **Windows SmartScreen:** verify that the file came from this project's release. If you choose to run it, click **More info → Run anyway**. You do not need to disable SmartScreen.
+- **Mac Gatekeeper:** the beta has an ad-hoc integrity signature, but **is not notarized by Apple**. After an opening attempt is blocked, use *System Settings → Privacy & Security → Open Anyway*. [Apple's instructions](https://support.apple.com/102445). Do not disable Gatekeeper or remove quarantine attributes.
 
-```powershell
-winget install Microsoft.DotNet.SDK.10
-git clone https://github.com/byensitmagnus/ai-ram-guard
-cd ai-ram-guard
-dotnet test
-dotnet publish src/AiRamGuard.Tray -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o out
-dotnet publish src/AiRamGuard.Cli  -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:PublishTrimmed=true -o out
-.\out\AiRamGuard.exe
-```
+Removing the Mac approval prompt for normal distribution requires a Developer ID certificate and Apple notarization. The packaging script supports a configured signing identity and notary profile; no signing credentials are included in this repository.
 
-## Settings
+## Portable Windows copy and CLI
 
-Everything is on the *Settings* page in the app. The file behind it is `%APPDATA%\AiRamGuard\settings.json`:
+The [portable ZIP](https://github.com/byensitmagnus/ai-ram-guard/releases/latest/download/AiRamGuard-win-x64.zip) remains available for scripts and advanced users. Extract both files; run `AiRamGuard.exe` and choose **Just run it**, or use `airg.exe` in a terminal.
 
-```json
-{
-  "Guard": {
-    "MinFreeMB": 6144,
-    "GameModeMinFreeMB": 10240,
-    "GameMode": true,
-    "KillOrphans": true,
-    "Trim": true,
-    "LowerPriority": true,
-    "IntervalSeconds": 120,
-    "AgentCapsMB": { "codex": 3072 },
-    "PausedUntil": null
-  },
-  "AutoGuard": true,
-  "Notify": true
-}
-```
+Legacy silent install from the ZIP: `AiRamGuard.exe --install`. This starts in the notification area; open the Start menu shortcut to show the window. Clicking **Install** in the portable welcome screen now opens the installed app immediately.
 
-| Folder | Holds |
-|---|---|
-| `%APPDATA%\AiRamGuard` | `settings.json`, your own `profiles.json`, `moves.json` (how to undo cache moves) |
-| `%LOCALAPPDATA%\AiRamGuard` | history, statistics, `lineage.json`, `guard.log` |
+A terminal hosted by a Store/MSIX app can see private copies of the registry and AppData. Use the normal installer from Windows for a user installation; an agent can start it outside its package with `Invoke-CimMethod Win32_Process -MethodName Create`.
 
-## Uninstall
+## Build from source
 
-*Settings → Apps → AI RAM Guard → Uninstall*, or *Uninstall…* at the bottom of the app's *Settings* page. For scripts: `"%LOCALAPPDATA%\Programs\AiRamGuard\AiRamGuard.exe" --uninstall --quiet`. That removes the app, its shortcut, autostart and its `PATH` entry. Caches you moved stay where they are: undo the moves first on the *Disk* page if you want them back on the old drive. Delete the two folders above too if you want your settings and history gone.
+Windows: .NET 10 SDK, `dotnet test -c Release`, then publish `src/AiRamGuard.Tray` and `src/AiRamGuard.Cli` as self-contained `win-x64` binaries. [CI](../.github/workflows/ci.yml) and [release workflow](../.github/workflows/release.yml) contain the exact commands.
 
-Portable copy: switch off *Start with Windows* in the app, exit it from the tray menu and delete the folder.
+Mac: Xcode Command Line Tools, `swift test --package-path macos`, then `bash packaging/macos/package.sh`. This builds both architectures and packages the app. [Mac build details](../macos/README.md).
+
+## Windows data folders
+
+| Folder | Contents |
+| --- | --- |
+| `%APPDATA%\AiRamGuard` | Settings and custom profiles |
+| `%LOCALAPPDATA%\AiRamGuard` | History, statistics, lineage, config backups and log |
+
+Windows settings remain available in the app. Mac data is local under `~/Library/Application Support/AiRamGuard`.

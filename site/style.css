@@ -3,3 +3,4 @@
 @media(max-width:640px){.site-header,main,footer{width:calc(100% - 40px)}.site-header{padding-block:24px;gap:12px}.brand{font-size:15px;gap:9px}.brand img{width:34px;height:34px}.site-header button{padding:9px 7px;font-size:13px}.intro{padding-block:32px}.lead{font-size:18px}.downloads{grid-template-columns:1fr}.download{padding:28px 0}.download+.download{border-left:0;border-top:1px solid var(--line);padding:28px 0}.download-button{width:100%}.quiet{max-width:100%}.preview{margin-top:40px}.preview-heading{display:block}.preview-heading span{display:block;margin-top:8px}.help{margin-block:40px}summary{font-size:15px}.more{gap:18px}footer{font-size:12px}}
 @media(prefers-reduced-motion:reduce){:root{scroll-behavior:auto}}
 h1{white-space:pre-line}
+.signing-note{margin-top:12px}
