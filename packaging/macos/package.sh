@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-VERSION="${1:-1.4.1}"
+VERSION="${1:-1.5.0}"
 OUTPUT="${2:-$ROOT/out/mac}"
 case "$VERSION" in *[!0-9.]*|'') echo "Version must contain digits and dots" >&2; exit 1;; esac
 mkdir -p "$OUTPUT"

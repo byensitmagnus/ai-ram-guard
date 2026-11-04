@@ -14,6 +14,8 @@ public sealed class GuardSettings
     public int IntervalSeconds { get; set; } = 120;
     /// <summary>Per-app RAM cap by profile id, e.g. { "codex": 3072 }. Above it the app is trimmed even with plenty of free RAM.</summary>
     public Dictionary<string, int> AgentCapsMB { get; set; } = [];
+    /// <summary>Close a Claude desktop session (and its MCP servers) nobody wrote in for this many hours. 0 = never. See <see cref="Sessions"/>.</summary>
+    public int CloseIdleSessionHours { get; set; }
     /// <summary>Guard does nothing until this time (manual "Free RAM now" still works).</summary>
     public DateTime? PausedUntil { get; set; }
 }
@@ -24,6 +26,8 @@ public sealed record Plan(IReadOnlyList<ProcessInfo> Kill, IReadOnlyList<Process
     public IReadOnlyList<ProcessInfo> Lower { get; init; } = [];
     /// <summary>A game is in front: <see cref="Lower"/> also gets below-normal CPU priority and EcoQoS.</summary>
     public bool LowerCpu { get; init; }
+    /// <summary>Idle sessions to close, see <see cref="GuardSettings.CloseIdleSessionHours"/>.</summary>
+    public IReadOnlyList<IdleSession> Close { get; init; } = [];
 
     public static Plan Nothing(string reason) => new([], [], reason);
 }

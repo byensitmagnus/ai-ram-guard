@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.0 — 2026-11-04
+
+- Close idle Claude sessions: *Settings → Limits → Close idle Claude sessions after* (off by default). Claude (Desktop / Code) keeps every session's process and MCP servers running until the app closes; a session nobody wrote in for that many hours is closed with everything it started. When you write in it again, Claude starts it with the same conversation (tested). Its Remote Control switches off. Idle time comes from the session's transcript, so a session without one is never closed. `airg clean` and `airg watch` take `--close-idle HOURS`.
+
 ## 1.4.1 — 2026-11-04
 
 - *Fixes* warns when an AI app holds 100+ internet connections, or the whole PC 300+, and names the three programs holding the most. On mobile broadband the provider shares a limited pool of connections (CGNAT): when it runs out, pages hang although speed tests look fine. Only IPv4 connections to public addresses count; LAN, loopback and Tailscale don't use the pool.

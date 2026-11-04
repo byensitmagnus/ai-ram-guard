@@ -104,7 +104,11 @@ public static class Guard
         var byPid = report.Snapshot.Processes.ToDictionary(p => p.Pid);
         // A fullscreen terminal running Claude Code is no game: count each AI process's parent chain, as Prioritize does.
         var game = Desktop.ForegroundIsFullscreen() && !report.Agents.Any(a => a.Processes.Any(p => p.Pid == fg || Analyzer.HasAncestor(p, fg, byPid)));
-        return (report, Policy.Decide(report, s, fg, game, force));
+        var plan = Policy.Decide(report, s, fg, game, force);
+        var paused = s.PausedUntil is { } until && until > DateTime.Now;
+        if (s.CloseIdleSessionHours > 0 && !paused)
+            plan = plan with { Close = Sessions.FindIdle(report.Snapshot, TimeSpan.FromHours(s.CloseIdleSessionHours), Sessions.LastWrite, DateTime.Now) };
+        return (report, plan);
     }
 
     public static CleanResult Run(GuardSettings s, ProfileSet profiles, bool force = false, bool dryRun = false) =>
@@ -133,6 +137,13 @@ public static class Guard
             var ok = dryRun || TryKill(p);
             if (ok) { killed++; freed += p.WorkingSetBytes; }
             Log.Write($"{(dryRun ? "would close" : ok ? "closed" : "could not close")} orphan {p.Name} {p.Pid} {p.WorkingSetBytes / 1048576} MB {Analyzer.HelperKey(p.CommandLine)}");
+        }
+        foreach (var session in plan.Close)
+        {
+            var closed = dryRun ? session.Processes.Count : session.Processes.Count(TryKill);
+            if (closed == 0) continue;
+            killed += closed; freed += session.Bytes;
+            Log.Write($"{(dryRun ? "would close" : "closed")} Claude session {session.Id[..8]}, idle {session.Idle.TotalHours:0.#} h: {closed} processes, {session.Bytes >> 20} MB");
         }
         var now = DateTime.Now;
         foreach (var stale in Trimmed.Where(kv => now - kv.Value.At >= TrimCooldown).Select(kv => kv.Key).ToList()) Trimmed.Remove(stale);

@@ -8,9 +8,11 @@ Usage:
   airg scan [--json]          Show RAM and internet connections per AI app, duplicate MCP servers and orphans
   airg advise [--json]        Permanent fixes: duplicated MCP servers, npx wrappers, which config to change
                               (the tray app's Fixes page applies them with one click, with undo)
-  airg clean [--dry-run]      Close orphans and trim AI apps now (ignores the threshold)
+  airg clean [--dry-run]      Close leftovers and trim AI apps now (ignores the threshold)
   airg watch [--min-free GB] [--interval SEC] [--no-game-mode]
                               Guard continuously (what the tray app does)
+  --close-idle HOURS          With clean or watch: also close Claude desktop sessions nobody wrote in
+                              for that long (Claude reopens them when you write in them again)
   airg disk [--json]          Where AI tools and their caches write, and how much
   airg move <id> <drive|folder>
                               Move a cache to another drive, e.g. airg move npm D:
@@ -33,6 +35,7 @@ var settings = new GuardSettings();
 if (Opt("--min-free") is { } mf) settings.MinFreeMB = (int)(double.Parse(mf, System.Globalization.CultureInfo.InvariantCulture) * 1024);
 if (Opt("--interval") is { } iv) settings.IntervalSeconds = int.Parse(iv);
 if (Has("--no-game-mode")) settings.GameMode = false;
+if (Opt("--close-idle") is { } ci) settings.CloseIdleSessionHours = int.Parse(ci);
 
 switch (cmd)
 {
@@ -59,7 +62,7 @@ switch (cmd)
 
     case "clean":
         var r = Guard.Run(settings, profiles, force: true, dryRun: Has("--dry-run"));
-        Console.WriteLine($"{(Has("--dry-run") ? "[dry-run] " : "")}Closed {r.Killed} orphans, trimmed {r.Trimmed} AI processes, freed {r.FreedBytes / 1048576:N0} MB. Free RAM {Guard.Gb(r.FreeBeforeBytes)} -> {Guard.Gb(r.FreeAfterBytes)} GB");
+        Console.WriteLine($"{(Has("--dry-run") ? "[dry-run] " : "")}Closed {r.Killed} leftover processes, trimmed {r.Trimmed} AI processes, freed {r.FreedBytes / 1048576:N0} MB. Free RAM {Guard.Gb(r.FreeBeforeBytes)} -> {Guard.Gb(r.FreeAfterBytes)} GB");
         return 0;
 
     case "watch":

@@ -8,6 +8,7 @@
 | `airg advise --json` | Same as JSON: `kind`, `title`, `detail`, `savingsMB`, `configPath`, `canFix` (the app's *Fixes* page can do it in one click) |
 | `airg clean` | Close orphans and trim AI apps now, regardless of the limit |
 | `airg clean --dry-run` | Only show what `clean` would do |
+| `airg clean --close-idle 3` | Also close Claude desktop sessions nobody wrote in for 3 hours, with their MCP servers. Claude starts a session again when you write in it |
 | `airg watch` | Guard every 2 minutes (headless version of the app) |
 | `airg watch --min-free 8 --interval 120 --no-game-mode` | Custom limit (GB), interval (s), game mode off |
 | `airg disk` | Where AI tools and their caches write, size and drive, biggest first |

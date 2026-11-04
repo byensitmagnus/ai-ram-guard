@@ -793,6 +793,8 @@ sealed class SettingsPage : Page
                 new Stepper { Min = 1, Max = 64, Value = g.MinFreeMB / 1024, Format = v => $"{v} GB" }, v => g.MinFreeMB = v * 1024),
             Row("Game mode: free RAM below", "Stricter limit while you play.",
                 new Stepper { Min = 1, Max = 64, Value = g.GameModeMinFreeMB / 1024, Format = v => $"{v} GB" }, v => g.GameModeMinFreeMB = v * 1024),
+            Row("Close idle Claude sessions after", "Closes a session and its MCP servers when nobody wrote in it for this long. Claude starts it again when you do; its Remote Control switches off.",
+                new Stepper { Min = 0, Max = 48, Value = g.CloseIdleSessionHours, Format = v => v == 0 ? "Never" : $"{v} h" }, v => g.CloseIdleSessionHours = v),
             Row("Check every", "How often to scan. Each scan takes a fraction of a second.",
                 new Stepper { Min = 1, Max = 30, Value = Math.Max(1, g.IntervalSeconds / 60), Format = v => $"{v} min" }, v => g.IntervalSeconds = v * 60));
 
