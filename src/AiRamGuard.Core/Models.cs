@@ -8,7 +8,8 @@ public sealed record ProcessInfo(
     string CommandLine,
     long WorkingSetBytes,
     DateTime Created,
-    string ExecutablePath = "");
+    string ExecutablePath = "",
+    int Connections = 0);
 
 /// <summary>A point-in-time view of the machine.</summary>
 public sealed record Snapshot(
@@ -26,6 +27,9 @@ public sealed record HelperGroup(string Key, IReadOnlyList<ProcessInfo> Processe
 public sealed record AgentUsage(AgentProfile Profile, IReadOnlyList<ProcessInfo> Processes, IReadOnlyList<HelperGroup> Helpers)
 {
     public long Bytes => Processes.Sum(p => p.WorkingSetBytes);
+
+    /// <summary>Open internet connections, see <see cref="Connections.ByPid"/>.</summary>
+    public int Connections => Processes.Sum(p => p.Connections);
 
     /// <summary>Path of the app's own executable, for its icon. Empty for CLI agents.</summary>
     public string MainExecutable => Processes.FirstOrDefault(p => Profile.OwnsProcessName(p.Name))?.ExecutablePath ?? "";

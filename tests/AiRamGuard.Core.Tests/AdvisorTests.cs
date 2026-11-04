@@ -60,6 +60,34 @@ public class AdvisorTests
         Assert.Single(advice, a => a.Kind == AdviceKind.BigApp);
     }
 
+    [Fact]
+    public void Many_internet_connections_are_flagged_for_the_app_and_the_pc_naming_the_biggest_holders()
+    {
+        ProcessInfo C(int pid, string name, int n) => new(pid, 1, name, "", 10 * MB, DateTime.Now, Connections: n);
+        var claude = new[] { C(1, "claude.exe", 60), C(2, "claude.exe", 50) };
+        var r = Build(claude);
+        r = r with { Snapshot = r.Snapshot with { Processes = [.. claude, C(3, "syncthing.exe", 150), C(4, "chrome.exe", 40)] } };
+
+        var advice = Advisor.Advise(r, []).Where(a => a.Kind == AdviceKind.Connections).ToList();
+        Assert.Equal(["Claude holds 110 internet connections", "Your PC holds 300 internet connections"], advice.Select(a => a.Title));
+        Assert.StartsWith("Most are held by syncthing (150), claude (110), chrome (40).", advice[1].Detail);
+        Assert.All(advice, a => Assert.False(a.CanFix));
+
+        Assert.DoesNotContain(Advisor.Advise(Build([C(1, "claude.exe", 99)]), []), a => a.Kind == AdviceKind.Connections);
+    }
+
+    [Theory]
+    [InlineData("8.8.8.8", true)]
+    [InlineData("212.97.249.208", true)]
+    [InlineData("192.168.1.1", false)]
+    [InlineData("10.0.0.5", false)]
+    [InlineData("172.20.1.1", false)]
+    [InlineData("100.71.210.118", false)]
+    [InlineData("127.0.0.1", false)]
+    [InlineData("::1", false)]
+    public void Only_public_ipv4_peers_count_as_internet(string ip, bool internet) =>
+        Assert.Equal(internet, Connections.IsInternet(System.Net.IPAddress.Parse(ip)));
+
     [Theory]
     [InlineData("@wonderwhy-er/desktop-commander", "desktop-commander")]
     [InlineData("rea-agents", "rea-agents")]

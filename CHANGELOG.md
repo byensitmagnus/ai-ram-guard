@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.1 — 2026-11-04
+
+- *Fixes* warns when an AI app holds 100+ internet connections, or the whole PC 300+, and names the three programs holding the most. On mobile broadband the provider shares a limited pool of connections (CGNAT): when it runs out, pages hang although speed tests look fine. Only IPv4 connections to public addresses count; LAN, loopback and Tailscale don't use the pool.
+- `airg scan` shows each AI app's internet connections (`connections` in `--json`).
+
 ## 1.4.0 — 2026-11-03
 
 - Direct download page in Danish and English, with one Windows installer and one universal Mac download. GitHub README now starts with downloads and two installation steps.

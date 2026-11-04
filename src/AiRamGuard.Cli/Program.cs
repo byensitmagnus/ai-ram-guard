@@ -5,7 +5,7 @@ const string Help = """
 AI RAM Guard (airg) - stop AI agents and MCP servers from eating your RAM.
 
 Usage:
-  airg scan [--json]          Show RAM per AI app, duplicate MCP servers and orphans
+  airg scan [--json]          Show RAM and internet connections per AI app, duplicate MCP servers and orphans
   airg advise [--json]        Permanent fixes: duplicated MCP servers, npx wrappers, which config to change
                               (the tray app's Fixes page applies them with one click, with undo)
   airg clean [--dry-run]      Close orphans and trim AI apps now (ignores the threshold)
@@ -110,7 +110,7 @@ static void Print(Report r)
     Console.WriteLine($"RAM: {Guard.Gb(s.FreeRamBytes)} GB free of {Guard.Gb(s.TotalRamBytes)} GB. AI apps use {Guard.Gb(r.AiBytes)} GB.\n");
     foreach (var a in r.Agents)
     {
-        Console.WriteLine($"{a.Profile.Name,-32} {a.Processes.Count,4} proc  {a.Bytes / 1048576,7:N0} MB");
+        Console.WriteLine($"{a.Profile.Name,-32} {a.Processes.Count,4} proc  {a.Bytes / 1048576,7:N0} MB  {a.Connections,4} conn");
         foreach (var h in a.Helpers.Where(h => h.Count > 1 || h.Bytes > 100 * 1048576))
             Console.WriteLine($"  {(h.Count > 1 ? $"{h.Count}x" : "  "),4} {h.Key,-44} {h.Bytes / 1048576,7:N0} MB{(h.Count > 2 ? "  <- duplicate MCP servers" : "")}");
     }
@@ -134,6 +134,7 @@ static object ToJson(Report r) => new
         name = a.Profile.Name,
         processes = a.Processes.Count,
         mb = a.Bytes / 1048576,
+        connections = a.Connections,
         helpers = a.Helpers.Select(h => new { key = h.Key, count = h.Count, mb = h.Bytes / 1048576 }),
     }),
     orphans = r.Orphans.Select(o => new { pid = o.Pid, name = o.Name, key = Analyzer.HelperKey(o.CommandLine), mb = o.WorkingSetBytes / 1048576 }),

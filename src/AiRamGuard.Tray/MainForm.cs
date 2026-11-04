@@ -361,6 +361,7 @@ sealed class FixesPage : Page
             AdviceKind.Orphans => ("\uE74D", t.Warn),
             AdviceKind.Duplicates => ("\uE8C8", a.CanFix ? t.BrandText : t.Muted),
             AdviceKind.NpxWrapper => ("\uE943", t.Muted),
+            AdviceKind.Connections => ("\uE701", t.Warn),
             _ => ("\uE9D9", t.BrandText),
         };
         var icon = new IconCircle(glyph, color) { BackColor = t.Surface, Location = new Point(Pad, Pad) };

@@ -27,6 +27,7 @@ public static class SnapshotReader
     public static Snapshot Read()
     {
         var list = new List<ProcessInfo>();
+        var connections = Connections.ByPid();
         using (var search = new ManagementObjectSearcher(
             "SELECT ProcessId, ParentProcessId, Name, CommandLine, WorkingSetSize, CreationDate, ExecutablePath FROM Win32_Process"))
         using (var results = search.Get())
@@ -35,17 +36,19 @@ public static class SnapshotReader
             {
                 using (o)
                 {
+                    var pid = Convert.ToInt32(o["ProcessId"]);
                     var created = DateTime.MinValue; // unknown start time: never killed (TryKill can't match it)
                     try { if (o["CreationDate"] is string c) created = ManagementDateTimeConverter.ToDateTime(c); }
                     catch (Exception e) when (e is ArgumentOutOfRangeException or FormatException) { }
                     list.Add(new ProcessInfo(
-                        Convert.ToInt32(o["ProcessId"]),
+                        pid,
                         Convert.ToInt32(o["ParentProcessId"]),
                         (string?)o["Name"] ?? "",
                         (string?)o["CommandLine"] ?? "",
                         Convert.ToInt64(o["WorkingSetSize"] ?? 0L),
                         created,
-                        (string?)o["ExecutablePath"] ?? ""));
+                        (string?)o["ExecutablePath"] ?? "",
+                        connections.GetValueOrDefault(pid)));
                 }
             }
         }

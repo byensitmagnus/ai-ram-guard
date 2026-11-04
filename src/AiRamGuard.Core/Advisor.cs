@@ -1,6 +1,6 @@
 namespace AiRamGuard.Core;
 
-public enum AdviceKind { Orphans, Duplicates, NpxWrapper, BigApp }
+public enum AdviceKind { Orphans, Duplicates, NpxWrapper, BigApp, Connections }
 
 /// <summary>A concrete, permanent fix, with an estimate of what it saves.</summary>
 /// <param name="Servers">The config entries that start a duplicated server: when there are any, the app can switch them off itself.</param>
@@ -66,6 +66,22 @@ public static class Advisor
                     $"{a.Profile.Name} uses {share * 100:0}% of your RAM",
                     $"Give it a cap: above it, AI RAM Guard frees its idle memory even when your PC has RAM to spare.",
                     0, AgentId: a.Profile.Id));
+
+            if (a.Connections >= ManyConnections)
+                list.Add(new Advice(AdviceKind.Connections,
+                    $"{a.Profile.Name} holds {a.Connections} internet connections",
+                    $"Spread over {a.Processes.Count} processes. {PoolWhy} Close the sessions you don't use.",
+                    0, AgentId: a.Profile.Id));
+        }
+
+        var holders = r.Snapshot.Processes.Where(p => p.Connections > 0).ToList();
+        var total = holders.Sum(p => p.Connections);
+        if (total >= ManyOnPc)
+        {
+            var top = holders.GroupBy(p => Path.GetFileNameWithoutExtension(p.Name), StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Sum(p => p.Connections)).Take(3).Select(g => $"{g.Key} ({g.Sum(p => p.Connections)})").ToList();
+            list.Add(new Advice(AdviceKind.Connections, $"Your PC holds {total} internet connections",
+                $"Most are held by {string.Join(", ", top)}. {PoolWhy} Close what you don't use, or pause its syncing and downloads.", 0));
         }
         return list.OrderByDescending(x => x.SavingsBytes).ToList();
     }
@@ -86,6 +102,11 @@ public static class Advisor
     /// <summary>"~\.claude.json": shorter, and screenshots of the app don't show the user name.</summary>
     public static string Display(string path) =>
         Home.Length > 0 && path.StartsWith(Home, StringComparison.OrdinalIgnoreCase) ? "~" + path[Home.Length..] : path;
+
+    /// <summary>Normal use is a few dozen per app; hundreds is a sync tool, a download or many forgotten sessions.</summary>
+    const int ManyConnections = 100, ManyOnPc = 300;
+
+    const string PoolWhy = "On mobile broadband the provider shares a limited pool of connections between your devices: when it runs out, new pages hang although speed tests look fine.";
 
     /// <summary>Below this a fix isn't worth the user's time.</summary>
     const long MinSavings = 50L << 20;
