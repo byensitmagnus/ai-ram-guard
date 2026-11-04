@@ -36,7 +36,7 @@ swift test
 swift run AiRamGuardMac --scan-json
 swift run AiRamGuardMac --smoke-test
 cd ..
-bash packaging/macos/package.sh 1.4.0 out/mac
+bash packaging/macos/package.sh 1.4.1 out/mac
 ```
 
 `--scan-json` reads process state and updates the local lineage file; it never closes or reprioritises a process. `--smoke-test` opens the UI, performs its normal scan, then exits. CI should use a temporary HOME so normal user data is not touched.

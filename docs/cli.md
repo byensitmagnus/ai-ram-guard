@@ -2,7 +2,7 @@
 
 | Command | What it does |
 |---|---|
-| `airg scan` | RAM per AI app, its helpers/MCP servers (duplicates flagged) and orphans |
+| `airg scan` | RAM and internet connections per AI app, its helpers/MCP servers (duplicates flagged) and orphans |
 | `airg scan --json` | Same data as JSON (MB values) for scripts and dashboards |
 | `airg advise` | Permanent fixes: duplicated MCP servers, npx wrappers, the config file that loads them, and what each saves |
 | `airg advise --json` | Same as JSON: `kind`, `title`, `detail`, `savingsMB`, `configPath`, `canFix` (the app's *Fixes* page can do it in one click) |

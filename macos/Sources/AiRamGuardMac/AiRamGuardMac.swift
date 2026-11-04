@@ -281,7 +281,7 @@ struct SettingsView: View {
                 Text("If macOS asks, allow AI RAM Guard in System Settings → General → Login Items.").font(.caption).foregroundStyle(.secondary)
             }
             Section("About") {
-                Text("AI RAM Guard 1.4.0 for Mac · Preview")
+                Text("AI RAM Guard 1.4.1 for Mac · Preview")
                 Text("Free and open source · Byens IT").foregroundStyle(.secondary)
                 Link("Source code and help", destination: URL(string: "https://github.com/byensitmagnus/ai-ram-guard")!)
                 Text("This first Mac version monitors RAM and disk and closes verified leftovers. Config editing and Windows-style memory trimming are not available on Mac.").font(.caption).foregroundStyle(.secondary)

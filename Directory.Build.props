@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <Version>1.4.0</Version>
+    <Version>1.4.1</Version>
     <Authors>Magnus Steinmeier Olsen</Authors>
     <Company>Byens IT</Company>
     <Product>AI RAM Guard</Product>
