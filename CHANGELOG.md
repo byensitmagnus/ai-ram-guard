@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1 — 2026-11-21
+
+- The memory-limit warning no longer waits on the *Fixes* page. The Overview's status line, the notification-area tooltip and the ring (orange) show it, and a notification tells you once, at most every 4 hours (with *Notifications* on).
+- Fix: a silent upgrade or uninstall (`/VERYSILENT`, package managers) gave up after 30 seconds while the app was running. Windows' Restart Manager can't close an app that lives in the notification area. Setup now asks the app to exit first. The release check upgrades and uninstalls over a running app.
+
 ## 1.6.0 — 2026-11-21
 
 The numbers were too kind. The app counted RAM in use right now, and its own trimming moves idle memory to the pagefile: 90 copies of an MCP server showed as 760 MB while they held 6.6 GB.

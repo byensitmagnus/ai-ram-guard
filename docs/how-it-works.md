@@ -90,7 +90,7 @@ If you put `TEMP` on a Dev Drive, Microsoft notes that Windows Update needs the 
 
 ## What it never does
 
-- Close an AI app or a live session
+- Close an AI app, a session Claude marks as busy, or one you wrote in within the hours you chose
 - Close anything that isn't a helper it saw an AI app start
 - Need admin rights, talk to the network or send telemetry
 - Move Claude Code's or Codex's folders, or anything outside a cache folder

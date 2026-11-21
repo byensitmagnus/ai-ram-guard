@@ -268,8 +268,9 @@ sealed class OverviewPage : Page
         _pause.Text = s.Paused ? "Resume" : "Pause 1 h";
         _pause.Glyph = s.Paused ? "\uE768" : "\uE769";
         _clean.Text = s.Busy ? "Working…" : "Free RAM now";
-        _status.Text = $"● {s.StatusText}" + (s.LastRun == default ? "" : $"  ·  checked {s.LastRun:HH:mm}  ·  every {s.Settings.Guard.IntervalSeconds / 60.0:0.#} min");
-        _status.ForeColor = s.Paused ? t.Warn : t.Good;
+        _status.Text = $"● {s.StatusText}" + (s.LastRun == default ? "" : $"  ·  checked {s.LastRun:HH:mm}  ·  every {s.Settings.Guard.IntervalSeconds / 60.0:0.#} min")
+            + (s.Limit is null ? "" : "  ·  Windows is close to its memory limit");
+        _status.ForeColor = s.Paused || s.Limit is not null ? t.Warn : t.Good;
         _chart.Set(s.History.Samples);
         _fixes.Visible = s.Advice.Count > 0;
         _fixes.Text = s.Advice.Count == 1 ? "See the fix" : $"See {s.Advice.Count} fixes";

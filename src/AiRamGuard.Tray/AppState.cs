@@ -12,6 +12,8 @@ sealed class AppState
 
     public Report? Report { get; set; }
     public IReadOnlyList<Advice> Advice { get; set; } = [];
+    /// <summary>Windows is close to its commit limit: free RAM looks fine and says nothing about it, so every surface shows this.</summary>
+    public Advice? Limit => Advice.FirstOrDefault(a => a.Kind == AdviceKind.Commit);
     /// <summary>Servers AI RAM Guard switched off and that are still off: the Fixes page offers Undo.</summary>
     public IReadOnlyList<FixRecord> Fixed { get; set; } = [];
     public CleanResult? Last { get; set; }

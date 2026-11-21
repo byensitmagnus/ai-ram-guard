@@ -7,7 +7,7 @@
 
 The app opens after installation. It adds a Start menu shortcut, starts quietly with Windows, puts `airg` on your user PATH and appears in *Settings → Apps*. No admin rights, .NET download or manual unpacking is needed.
 
-For an update, run the new installer over the existing version. If the old app is using the files, Setup asks to close it. Settings and history are retained. Remove it using *Settings → Apps → AI RAM Guard*; your history and settings are kept.
+For an update, run the new installer over the existing version. Setup closes the running app first, also in a silent installation. Settings and history are retained. Remove it using *Settings → Apps → AI RAM Guard*; your history and settings are kept.
 
 Silent deployment: `AiRamGuard-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. Silent installation does not open the window.
 

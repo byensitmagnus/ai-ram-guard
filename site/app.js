@@ -1,5 +1,5 @@
 const english = {
-  title: 'Less RAM waste.\nMore room to work.', lead: 'See what Claude, Codex and Cursor use, and clean up the helpers they leave behind.', trust: 'Free · Open source · No account',
+  title: 'Less RAM waste.\nMore room to work.', lead: 'See what Claude, Codex and Cursor really hold, in RAM and pagefile. Close idle sessions and leftover helpers in one click.', trust: 'Free · Open source · No account',
   windowsRequirements: 'Windows 10 / 11 · 64-bit', downloadWindows: 'Download for Windows', windowsStep1: 'Open the installer.', windowsStep2: 'Click Install. The app opens automatically.', windowsExtra: 'No unzipping or .NET installation. Starts with Windows.',
   macRequirements: 'macOS 13+ · Apple Silicon and Intel', downloadMac: 'Download for Mac', macStep1: 'Open the file and drag the app to Applications.', macStep2: 'Open AI RAM Guard from Applications.', macExtra: 'A native Mac app with memory monitoring and cleanup of leftover helpers.', macSigning: 'This beta is not notarized by Apple. macOS requires your approval the first time you open it.', macFirstOpen: 'How to approve the Mac beta',
   previewTitle: 'The overview, without the search.', previewCaption: 'Windows version', helpTitle: 'Good to know', firstOpenTitle: 'Windows or Mac asks you to approve the app',

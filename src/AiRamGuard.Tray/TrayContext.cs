@@ -12,7 +12,7 @@ sealed class TrayContext : ApplicationContext
     readonly System.Windows.Forms.Timer _guardTimer = new(), _sampleTimer = new() { Interval = 60_000 };
     readonly ToolStripMenuItem _status = new() { Enabled = false }, _pause = new("Pause for 1 hour");
     readonly WindowsFormsSynchronizationContext _ui;
-    DateTime _lastToast = DateTime.MinValue;
+    DateTime _lastToast = DateTime.MinValue, _lastLimitToast = DateTime.MinValue;
     MainForm? _form;
     int _samplesSinceSave;
 
@@ -112,6 +112,11 @@ sealed class TrayContext : ApplicationContext
             }
             if (_state.History.Samples.Count == 0) Sample();
             Toast(result, force, dryRun);
+            if (_state.Limit is { } limit && s.Notify && !force && DateTime.Now - _lastLimitToast > TimeSpan.FromHours(4))
+            {
+                _lastLimitToast = DateTime.Now; // after the round's own toast: this one matters more
+                _icon.ShowBalloonTip(5000, "AI RAM Guard", $"{limit.Title}. Fixes shows what to close.", ToolTipIcon.Warning);
+            }
         }
         catch (Exception e) // async void: anything unhandled here would crash the app, and it restarts at every login
         {
@@ -155,20 +160,20 @@ sealed class TrayContext : ApplicationContext
     {
         if (_state.Report is not { } r) return;
         var s = r.Snapshot;
-        var text = $"{Theme.Size(s.FreeRamBytes)} free · AI apps {Theme.Size(r.AiBytes)}";
+        var text = (_state.Limit is null ? "" : "Memory limit close · ") + $"{Theme.Size(s.FreeRamBytes)} free · AI apps {Theme.Size(r.AiBytes)}";
         _status.Text = $"{_state.StatusText} · {text}";
         var tip = $"AI RAM Guard · {_state.StatusText}\n{text}";
         _icon.Text = tip.Length > 127 ? tip[..tip.LastIndexOf(' ', 126)] : tip;
         var old = _icon.Icon;
-        _icon.Icon = DrawIcon(1 - (double)s.FreeRamBytes / s.TotalRamBytes, (double)r.AiBytes / s.TotalRamBytes, _state.Paused);
+        _icon.Icon = DrawIcon(1 - (double)s.FreeRamBytes / s.TotalRamBytes, (double)r.AiBytes / s.TotalRamBytes, _state.Paused, _state.Limit is not null);
         old?.Dispose();
     }
 
     /// <summary>
-    /// Ring: brand = the AI share, light = the rest in use, faint track = free. Orange when RAM is nearly full, grey while paused.
+    /// Ring: brand = the AI share, light = the rest in use, faint track = free. Orange when RAM or Windows' memory limit is nearly full, grey while paused.
     /// Drawn at 32 px with thick strokes so it still reads when the shell shrinks it to 16.
     /// </summary>
-    static Icon DrawIcon(double usedPct, double aiPct, bool paused)
+    static Icon DrawIcon(double usedPct, double aiPct, bool paused, bool limitClose)
     {
         using var bmp = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bmp))
@@ -178,7 +183,7 @@ sealed class TrayContext : ApplicationContext
             // The taskbar follows the system theme, which can differ from the apps theme.
             var dark = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")?.GetValue("SystemUsesLightTheme") is not 1;
             var ink = dark ? Color.White : Color.FromArgb(40, 36, 48);
-            var accent = paused ? Color.Gray : usedPct > 0.85 ? Color.FromArgb(240, 138, 62) : Theme.Brand;
+            var accent = paused ? Color.Gray : usedPct > 0.85 || limitClose ? Color.FromArgb(240, 138, 62) : Theme.Brand;
             using var track = new Pen(Color.FromArgb(dark ? 70 : 55, ink), 7);
             using var used = new Pen(Color.FromArgb(paused ? 110 : 200, ink), 7);
             using var ai = new Pen(accent, 7);
