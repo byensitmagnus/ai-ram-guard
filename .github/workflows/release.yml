@@ -50,11 +50,18 @@ jobs:
           if ($app.HasExited -or !$app.MainWindowHandle -or !$app.Responding) { throw 'First app window failed to open or respond' }
           $second = Start-Process "$appDir/AiRamGuard.exe" -PassThru -Wait
           if ($second.ExitCode -ne 0) { throw 'Second launch failed' }
-          $exitSignal = [System.Threading.EventWaitHandle]::OpenExisting('Local\AiRamGuard.Exit')
-          $null = $exitSignal.Set(); $exitSignal.Dispose()
-          if (!$app.WaitForExit(10000)) { throw 'App did not exit cleanly' }
+          # A silent upgrade while the app runs (what winget does): Setup has to stop the app itself, well before Restart Manager's 30 s give-up.
+          $timer = [Diagnostics.Stopwatch]::StartNew()
+          $upgrade = Start-Process ./out/release/AiRamGuard-Setup.exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -PassThru -Wait
+          if ($upgrade.ExitCode -ne 0) { throw "Upgrade over the running app failed: $($upgrade.ExitCode)" }
+          if (!$app.WaitForExit(1000)) { throw 'Upgrade left the old app running' }
+          if ($timer.Elapsed.TotalSeconds -gt 25) { throw "Upgrade took $($timer.Elapsed.TotalSeconds) s: it waited for Restart Manager" }
+          $again = Start-Process "$appDir/AiRamGuard.exe" -ArgumentList '--background' -PassThru
+          Start-Sleep -Seconds 5
+          if ($again.HasExited) { throw 'App did not start after the upgrade' }
           $uninstall = Start-Process "$appDir/unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -PassThru -Wait
           if ($uninstall.ExitCode -ne 0) { throw 'Uninstaller failed' }
+          if (!$again.WaitForExit(1000)) { throw 'Uninstaller left the app running' }
           if (Test-Path "$appDir/AiRamGuard.exe") { throw 'Uninstaller left app behind' }
       - uses: actions/upload-artifact@v4
         with:
