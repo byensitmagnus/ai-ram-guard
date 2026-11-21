@@ -147,6 +147,41 @@ public class AdvisorTests
         Assert.NotNull(Advisor.FindConfig("rea-agents", [cfg]));
         Assert.Null(Advisor.FindConfig("rea-agents", [cfg with { Content = "[projects.'c:\\rea-agents']\n" }]));
     }
+
+    [Fact]
+    public void Savings_count_what_a_trimmed_process_still_holds_in_the_pagefile()
+    {
+        // The guard trimmed them to 5 MB of RAM each; they still hold 80 MB.
+        var procs = Enumerable.Range(10, 4).Select(i => P(i, Server, 5) with { PrivateBytes = 80 * MB }).ToList();
+        var dup = Assert.Single(Advisor.Advise(Build(procs), []), a => a.Kind == AdviceKind.Duplicates);
+        Assert.Equal(240 * MB, dup.SavingsBytes);
+    }
+
+    [Fact]
+    public void Near_the_commit_limit_the_warning_comes_first_and_says_what_is_left()
+    {
+        Report At(long commitMB) => new(new Snapshot([], 32_000 * MB, 15_000 * MB, commitMB * MB, 64_000 * MB), [], [P(9, Server, 900)]);
+        var advice = Advisor.Advise(At(57_856), []);
+        Assert.Equal(AdviceKind.Commit, advice[0].Kind);
+        Assert.Contains("6.0 GB left", advice[0].Title);
+        Assert.False(advice[0].CanFix);
+        Assert.DoesNotContain(Advisor.Advise(At(40_000), []), a => a.Kind == AdviceKind.Commit);
+        Assert.DoesNotContain(Advisor.Advise(Build([]), []), a => a.Kind == AdviceKind.Commit); // limit unknown
+    }
+
+    [Fact]
+    public void Idle_sessions_are_a_fix_the_app_can_do_and_the_total_never_exceeds_what_AI_apps_hold()
+    {
+        var procs = Enumerable.Range(10, 4).Select(i => P(i, Server, 100)).ToList();
+        var r = Build(procs);
+        var advice = Advisor.Advise(r, [], idle: [new IdleSession("24e2bb86-a433-45ea-8664-1d3d3a58c451", procs, TimeSpan.FromHours(3.4))]);
+        var idle = Assert.Single(advice, a => a.Kind == AdviceKind.IdleSessions);
+        Assert.True(idle.CanFix);
+        Assert.Equal("1 Claude session idle for 3+ hours", idle.Title);
+        Assert.Equal(400 * MB, idle.SavingsBytes);
+        Assert.Equal(700 * MB, advice.Sum(a => a.SavingsBytes));
+        Assert.Equal(400 * MB, Advisor.TotalSavings(advice)); // the duplicates are the idle session's own servers: counted once
+    }
 }
 
 public class HistoryTests

@@ -11,8 +11,8 @@ Usage:
   airg clean [--dry-run]      Close leftovers and trim AI apps now (ignores the threshold)
   airg watch [--min-free GB] [--interval SEC] [--no-game-mode]
                               Guard continuously (what the tray app does)
-  --close-idle HOURS          With clean or watch: also close Claude desktop sessions nobody wrote in
-                              for that long (Claude reopens them when you write in them again)
+  --close-idle HOURS          With clean or watch: also close Claude sessions (desktop and 'claude --bg')
+                              nobody wrote in for that long. The conversation is kept.
   airg disk [--json]          Where AI tools and their caches write, and how much
   airg move <id> <drive|folder>
                               Move a cache to another drive, e.g. airg move npm D:
@@ -47,7 +47,8 @@ switch (cmd)
 
     case "advise":
         var configs = KnownConfigs.Read();
-        var advice = Advisor.Advise(Guard.Scan(profiles), configs, Fixer.Applied(configs));
+        var scanned = Guard.Scan(profiles);
+        var advice = Advisor.Advise(scanned, configs, Fixer.Applied(configs), idle: Sessions.FindIdle(scanned.Snapshot, settings));
         if (Has("--json"))
             Console.WriteLine(JsonSerializer.Serialize(advice.Select(a => new { kind = a.Kind.ToString(), a.Title, a.Detail, savingsMB = a.SavingsBytes / 1048576, a.ConfigPath, canFix = a.CanFix }), new JsonSerializerOptions { WriteIndented = true }));
         else if (advice.Count == 0) Console.WriteLine("Nothing to fix. No duplicated MCP servers and no leftovers.");
@@ -110,12 +111,15 @@ switch (cmd)
 static void Print(Report r)
 {
     var s = r.Snapshot;
-    Console.WriteLine($"RAM: {Guard.Gb(s.FreeRamBytes)} GB free of {Guard.Gb(s.TotalRamBytes)} GB. AI apps use {Guard.Gb(r.AiBytes)} GB.\n");
+    Console.WriteLine($"RAM: {Guard.Gb(s.FreeRamBytes)} GB free of {Guard.Gb(s.TotalRamBytes)} GB. AI apps use {Guard.Gb(r.AiBytes)} GB.");
+    // "held" is RAM plus pagefile: what closing gives back. A trimmed app looks small in RAM and is not.
+    if (s.CommitLimitBytes > 0) Console.WriteLine($"Reserved (RAM + pagefile): {Guard.Gb(s.CommitBytes)} of {Guard.Gb(s.CommitLimitBytes)} GB. AI apps hold {Guard.Gb(r.Agents.Sum(a => a.HeldBytes))} GB.");
+    Console.WriteLine();
     foreach (var a in r.Agents)
     {
-        Console.WriteLine($"{a.Profile.Name,-32} {a.Processes.Count,4} proc  {a.Bytes / 1048576,7:N0} MB  {a.Connections,4} conn");
-        foreach (var h in a.Helpers.Where(h => h.Count > 1 || h.Bytes > 100 * 1048576))
-            Console.WriteLine($"  {(h.Count > 1 ? $"{h.Count}x" : "  "),4} {h.Key,-44} {h.Bytes / 1048576,7:N0} MB{(h.Count > 2 ? "  <- duplicate MCP servers" : "")}");
+        Console.WriteLine($"{a.Profile.Name,-32} {a.Processes.Count,4} proc  {a.Bytes / 1048576,7:N0} MB  {a.HeldBytes / 1048576,7:N0} MB held  {a.Connections,4} conn");
+        foreach (var h in a.Helpers.Where(h => h.Count > 1 || h.HeldBytes > 100 * 1048576))
+            Console.WriteLine($"  {(h.Count > 1 ? $"{h.Count}x" : "  "),4} {h.Key,-44} {h.Bytes / 1048576,7:N0} MB  {h.HeldBytes / 1048576,7:N0} MB held{(h.Count > 2 ? "  <- duplicate MCP servers" : "")}");
     }
     if (r.Orphans.Count > 0)
     {
@@ -131,14 +135,17 @@ static object ToJson(Report r) => new
     totalRamMB = r.Snapshot.TotalRamBytes / 1048576,
     freeRamMB = r.Snapshot.FreeRamBytes / 1048576,
     aiMB = r.AiBytes / 1048576,
+    commitMB = r.Snapshot.CommitBytes / 1048576,
+    commitLimitMB = r.Snapshot.CommitLimitBytes / 1048576,
     agents = r.Agents.Select(a => new
     {
         id = a.Profile.Id,
         name = a.Profile.Name,
         processes = a.Processes.Count,
         mb = a.Bytes / 1048576,
+        heldMB = a.HeldBytes / 1048576,
         connections = a.Connections,
-        helpers = a.Helpers.Select(h => new { key = h.Key, count = h.Count, mb = h.Bytes / 1048576 }),
+        helpers = a.Helpers.Select(h => new { key = h.Key, count = h.Count, mb = h.Bytes / 1048576, heldMB = h.HeldBytes / 1048576 }),
     }),
     orphans = r.Orphans.Select(o => new { pid = o.Pid, name = o.Name, key = Analyzer.HelperKey(o.CommandLine), mb = o.WorkingSetBytes / 1048576 }),
 };

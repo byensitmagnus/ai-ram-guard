@@ -1,15 +1,16 @@
 namespace AiRamGuard.Core;
 
-public enum AdviceKind { Orphans, Duplicates, NpxWrapper, BigApp, Connections }
+public enum AdviceKind { Orphans, Duplicates, NpxWrapper, BigApp, Connections, IdleSessions, Commit }
 
 /// <summary>A concrete, permanent fix, with an estimate of what it saves.</summary>
 /// <param name="Servers">The config entries that start a duplicated server: when there are any, the app can switch them off itself.</param>
 /// <param name="AgentId">The AI app it is about (for a cap).</param>
+/// <param name="Frees">The processes the fix closes. Fixes overlap (an idle session's servers are also somebody's duplicates): see <see cref="Advisor.TotalSavings"/>.</param>
 public sealed record Advice(AdviceKind Kind, string Title, string Detail, long SavingsBytes, string? ConfigPath = null,
-    IReadOnlyList<ServerEntry>? Servers = null, string? AgentId = null)
+    IReadOnlyList<ServerEntry>? Servers = null, string? AgentId = null, IReadOnlyList<ProcessInfo>? Frees = null)
 {
     /// <summary>The app can do this one itself; the others need the user (a plugin setting, an npm install).</summary>
-    public bool CanFix => Kind is AdviceKind.Orphans or AdviceKind.BigApp || Servers is { Count: > 0 };
+    public bool CanFix => Kind is AdviceKind.Orphans or AdviceKind.BigApp or AdviceKind.IdleSessions || Servers is { Count: > 0 };
 }
 
 /// <summary>An AI app's config file, read so advice can point at the exact file to change.</summary>
@@ -20,22 +21,38 @@ public static class Advisor
 {
     /// <param name="applied">Servers AI RAM Guard switched off: their copies run on until sessions close, which is not a new problem.</param>
     /// <param name="caps">Apps that have a cap already need no cap advice.</param>
-    public static IReadOnlyList<Advice> Advise(Report r, IReadOnlyList<ConfigFile> configs, IReadOnlyList<FixRecord>? applied = null, IReadOnlyDictionary<string, int>? caps = null)
+    /// <param name="idle">Claude sessions nobody wrote in for hours, see <see cref="Sessions.FindIdle(Snapshot, GuardSettings)"/>.</param>
+    public static IReadOnlyList<Advice> Advise(Report r, IReadOnlyList<ConfigFile> configs, IReadOnlyList<FixRecord>? applied = null, IReadOnlyDictionary<string, int>? caps = null,
+        IReadOnlyList<IdleSession>? idle = null)
     {
         var list = new List<Advice>();
+        var snap = r.Snapshot;
+
+        // Savings are what closing gives back (RAM + pagefile), not the working set: the guard's own trimming shrinks that to almost nothing.
+        if (snap.CommitLimitBytes > 0 && snap.CommitBytes >= snap.CommitLimitBytes * CommitWarn)
+            list.Add(new Advice(AdviceKind.Commit,
+                $"Windows is close to its memory limit: {Gb(snap.CommitLimitBytes - snap.CommitBytes)} GB left",
+                $"Programs have reserved {Gb(snap.CommitBytes)} of the {Gb(snap.CommitLimitBytes)} GB Windows can hand out (RAM plus pagefile). At the limit, apps crash or won't start, even with free RAM. "
+                + $"Freeing RAM doesn't lower it, closing does. AI apps hold {Gb(r.Agents.Sum(a => a.HeldBytes) + r.Orphans.Sum(o => o.HeldBytes))} GB of it.", 0));
+
+        if (idle is { Count: > 0 })
+            list.Add(new Advice(AdviceKind.IdleSessions,
+                $"{idle.Count} Claude session{(idle.Count > 1 ? "s" : "")} idle for {Math.Max(1, (int)idle.Min(s => s.Idle).TotalHours)}+ hours",
+                "Each keeps its own process and MCP servers running. Closing keeps the conversation: Claude starts the session again when you write in it (a background session with 'claude attach').",
+                idle.Sum(s => s.Bytes), Frees: idle.SelectMany(s => s.Processes).ToList()));
 
         if (r.Orphans.Count > 0)
         {
-            var mb = r.Orphans.Sum(o => o.WorkingSetBytes);
+            var mb = r.Orphans.Sum(o => o.HeldBytes);
             list.Add(new Advice(AdviceKind.Orphans,
                 $"{r.Orphans.Count} leftover AI processes",
-                "Their AI session is closed, but they still run. Closing them is safe.", mb));
+                "Their AI session is closed, but they still run. Closing them is safe.", mb, Frees: r.Orphans));
         }
 
         foreach (var a in r.Agents)
         {
             var own = ConfigsFor(a.Profile.Id, configs);
-            foreach (var h in a.Helpers.Where(h => h.Count >= 3 && h.Bytes - h.Bytes / h.Count >= MinSavings))
+            foreach (var h in a.Helpers.Where(h => h.Count >= 3 && h.HeldBytes - h.HeldBytes / h.Count >= MinSavings))
             {
                 var servers = McpServers.Find(h.Key, own);
                 if (servers.Count == 0 && (McpServers.IsOff(h.Key, own) || Term(h.Key) is { } term
@@ -48,16 +65,16 @@ public static class Advisor
                         ? $"Every {a.Profile.Name} session starts its own copy. It comes from the app itself or a plugin, not from a config file, so it can only be turned off in the app."
                         : $"Every {a.Profile.Name} session starts its own copy. It's configured in {Display(config.Path)} in a way AI RAM Guard doesn't change (comments, or an unusual layout): turn it off there.";
                 list.Add(new Advice(AdviceKind.Duplicates, $"{h.Key} runs {h.Count}× under {a.Profile.Name}", detail,
-                    h.Bytes - h.Bytes / h.Count, config?.Path, servers, a.Profile.Id));
+                    h.HeldBytes - h.HeldBytes / h.Count, config?.Path, servers, a.Profile.Id, h.Processes.Skip(1).ToList()));
             }
 
             foreach (var g in Analyzer.GroupHelpers(a.Processes.Where(p => p.CommandLine.Contains("npx-cli.js", StringComparison.OrdinalIgnoreCase))))
             {
-                if (g.Count < 2 || g.Bytes < MinSavings) continue;
+                if (g.Count < 2 || g.HeldBytes < MinSavings) continue;
                 list.Add(new Advice(AdviceKind.NpxWrapper,
                     $"{g.Count} npx wrappers in front of {g.Key}",
                     $"Each copy starts through npx, an extra process. Install it once ('npm i -g {g.Key}') and point the config at the installed server.",
-                    g.Bytes, FindConfig(g.Key, own)?.Path, AgentId: a.Profile.Id));
+                    g.HeldBytes, FindConfig(g.Key, own)?.Path, AgentId: a.Profile.Id, Frees: g.Processes));
             }
 
             var share = (double)a.Bytes / r.Snapshot.TotalRamBytes;
@@ -83,8 +100,18 @@ public static class Advisor
             list.Add(new Advice(AdviceKind.Connections, $"Your PC holds {total} internet connections",
                 $"Most are held by {string.Join(", ", top)}. {PoolWhy} Close what you don't use, or pause its syncing and downloads.", 0));
         }
-        return list.OrderByDescending(x => x.SavingsBytes).ToList();
+        // The limit warning first: it is why the other fixes matter today.
+        return list.OrderByDescending(x => x.Kind == AdviceKind.Commit).ThenByDescending(x => x.SavingsBytes).ToList();
     }
+
+    /// <summary>What all fixes save together: each process once, although several fixes would close it.</summary>
+    public static long TotalSavings(IReadOnlyList<Advice> advice) =>
+        advice.SelectMany(a => a.Frees ?? []).DistinctBy(p => p.Pid).Sum(p => p.HeldBytes);
+
+    /// <summary>Above this share of the commit limit, Windows is one big allocation away from refusing memory.</summary>
+    const double CommitWarn = 0.85;
+
+    static string Gb(long bytes) => (bytes / 1073741824.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>"as "rea" in ~\.claude.json (for all projects, and again in 2 projects)": the names are what Turn off removes.</summary>
     static string Describe(IReadOnlyList<ServerEntry> servers) => "as " + string.Join(", ", servers.Select(s => $"\"{s.Name}\"").Distinct()) + " in " + string.Join(" and ", servers.GroupBy(s => s.Path).Select(g =>

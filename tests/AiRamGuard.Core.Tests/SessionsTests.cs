@@ -43,4 +43,29 @@ public class SessionsTests
         Assert.Empty(Find([Session(10, Old, 30), terminal], []));
         Assert.Empty(Find([terminal], new() { [Old] = Now.AddHours(-20) }));
     }
+
+    [Fact]
+    public void A_background_session_is_closed_with_its_servers_and_its_terminal_host_last()
+    {
+        const string exe = @"C:\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe";
+        ProcessInfo Claude(int pid, int parent, string args, double hoursAgo, long privateMB = 0) =>
+            new(pid, parent, "claude.exe", $"{exe} {args}", 10 << 20, Now.AddHours(-hoursAgo), PrivateBytes: privateMB << 20);
+        var procs = new[]
+        {
+            Claude(1, 0, @"daemon run --json-path C:\daemon.json", 9),
+            Claude(50, 1, $"--bg-pty-host pipe-24e2bb86 80 24 -- {exe} --resume {Old} --remote-control", 8, 150),
+            Claude(51, 50, $"--resume {Old} --remote-control --permission-mode default", 8, 900),
+            Child(52, 51, 8),
+            Claude(60, 1, $"--bg-pty-host pipe-44fbcd70 200 50 -- {exe} --session-id {Fresh} -n \"x\" \"do --resume nothing\"", 8),
+            Claude(61, 60, $"--session-id {Fresh} -n \"x\" \"do --resume nothing\"", 8),
+        };
+        var idle = Assert.Single(Find(procs, new() { [Old] = Now.AddHours(-3), [Fresh] = Now.AddMinutes(-10) }));
+        Assert.Equal(Old, idle.Id);
+        Assert.Equal([51, 52, 50], idle.Processes.Select(p => p.Pid));
+        Assert.Equal((900L + 50 + 150) << 20, idle.Bytes); // what it holds, not the 10 MB left in RAM after a trim
+
+        // --resume with the transcript's path instead of the id
+        var byPath = new[] { procs[0], Claude(70, 1, "--bg-pty-host pipe 80 24 -- x", 8), Claude(71, 70, $@"--resume C:\Users\me\.claude\projects\p\{Old}.jsonl", 8) };
+        Assert.Equal(Old, Assert.Single(Find(byPath, new() { [Old] = Now.AddHours(-3) })).Id);
+    }
 }

@@ -16,7 +16,7 @@ static class Screenshots
         state.Report = inspected.Report;
         var configs = KnownConfigs.Read();
         state.Fixed = Fixer.Applied(configs);
-        state.Advice = Advisor.Advise(inspected.Report, configs, state.Fixed, state.Settings.Guard.AgentCapsMB);
+        state.Advice = Advisor.Advise(inspected.Report, configs, state.Fixed, state.Settings.Guard.AgentCapsMB, Sessions.FindIdle(inspected.Report.Snapshot, state.Settings.Guard));
         state.LastRun = DateTime.Now;
 
         using var form = new MainForm(state) { StartPosition = FormStartPosition.Manual, Location = new Point(-5000, -5000), ShowInTaskbar = false, Size = new Size(1180, 860) };

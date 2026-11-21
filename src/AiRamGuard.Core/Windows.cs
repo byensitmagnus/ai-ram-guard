@@ -29,7 +29,7 @@ public static class SnapshotReader
         var list = new List<ProcessInfo>();
         var connections = Connections.ByPid();
         using (var search = new ManagementObjectSearcher(
-            "SELECT ProcessId, ParentProcessId, Name, CommandLine, WorkingSetSize, CreationDate, ExecutablePath FROM Win32_Process"))
+            "SELECT ProcessId, ParentProcessId, Name, CommandLine, WorkingSetSize, PrivatePageCount, CreationDate, ExecutablePath FROM Win32_Process"))
         using (var results = search.Get())
         {
             foreach (ManagementObject o in results)
@@ -48,13 +48,15 @@ public static class SnapshotReader
                         Convert.ToInt64(o["WorkingSetSize"] ?? 0L),
                         created,
                         (string?)o["ExecutablePath"] ?? "",
-                        connections.GetValueOrDefault(pid)));
+                        connections.GetValueOrDefault(pid),
+                        Convert.ToInt64(o["PrivatePageCount"] ?? 0L))); // bytes, despite the name
                 }
             }
         }
         var mem = new Native.MEMORYSTATUSEX();
         Native.GlobalMemoryStatusEx(mem);
-        return new Snapshot(list, (long)mem.ullTotalPhys, (long)mem.ullAvailPhys);
+        // "PageFile" in this struct is the commit limit (RAM + pagefile), not the pagefile.
+        return new Snapshot(list, (long)mem.ullTotalPhys, (long)mem.ullAvailPhys, (long)(mem.ullTotalPageFile - mem.ullAvailPageFile), (long)mem.ullTotalPageFile);
     }
 }
 
@@ -138,13 +140,8 @@ public static class Guard
             if (ok) { killed++; freed += p.WorkingSetBytes; }
             Log.Write($"{(dryRun ? "would close" : ok ? "closed" : "could not close")} orphan {p.Name} {p.Pid} {p.WorkingSetBytes / 1048576} MB {Analyzer.HelperKey(p.CommandLine)}");
         }
-        foreach (var session in plan.Close)
-        {
-            var closed = dryRun ? session.Processes.Count : session.Processes.Count(TryKill);
-            if (closed == 0) continue;
-            killed += closed; freed += session.Bytes;
-            Log.Write($"{(dryRun ? "would close" : "closed")} Claude session {session.Id[..8]}, idle {session.Idle.TotalHours:0.#} h: {closed} processes, {session.Bytes >> 20} MB");
-        }
+        var (closedSessions, closedBytes) = Close(plan.Close, dryRun);
+        killed += closedSessions; freed += closedBytes;
         var now = DateTime.Now;
         foreach (var stale in Trimmed.Where(kv => now - kv.Value.At >= TrimCooldown).Select(kv => kv.Key).ToList()) Trimmed.Remove(stale);
         foreach (var p in plan.Trim)
@@ -164,6 +161,28 @@ public static class Guard
         if (killed + trimmed > 0)
             Log.Write($"{(dryRun ? "[dry-run] " : "")}{plan.Reason}: closed {killed} orphans, trimmed {trimmed} AI processes, freed {freed >> 20} MB, free {Gb(result.FreeBeforeBytes)} -> {Gb(freeAfter)} GB");
         return result;
+    }
+
+    static (int Processes, long Bytes) Close(IReadOnlyList<IdleSession> sessions, bool dryRun)
+    {
+        int killed = 0;
+        long freed = 0;
+        foreach (var session in sessions)
+        {
+            var closed = dryRun ? session.Processes.Count : session.Processes.Count(TryKill);
+            if (closed == 0) continue;
+            killed += closed; freed += session.Bytes;
+            Log.Write($"{(dryRun ? "would close" : "closed")} Claude session {session.Id[..8]}, idle {session.Idle.TotalHours:0.#} h: {closed} processes, {session.Bytes >> 20} MB");
+        }
+        return (killed, freed);
+    }
+
+    /// <summary>The Fixes card's "Close them". Scans again first: the list on screen can be minutes old, and a session written in since stays.</summary>
+    public static CleanResult CloseIdleSessions(TimeSpan min)
+    {
+        var snap = SnapshotReader.Read();
+        var (killed, freed) = Close(Sessions.FindIdle(snap, min, Sessions.LastWrite, DateTime.Now), dryRun: false);
+        return new CleanResult(killed, 0, snap.FreeRamBytes, FreeRamBytes(), "idle sessions", freed);
     }
 
     /// <summary>What the guard changed in one process. It restores exactly that, and only while the value is still the one it set.</summary>

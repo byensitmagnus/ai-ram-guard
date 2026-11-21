@@ -283,7 +283,7 @@ sealed class OverviewPage : Page
             _sub.Text = $"{(double)r.AiBytes / snap.TotalRamBytes:P0} of your {Theme.Size(snap.TotalRamBytes)}. Windows, games and everything else use {Theme.Size(Math.Max(0, used - r.AiBytes))}.";
             var lowMB = s.GameActive && s.Settings.Guard.GameMode ? s.Settings.Guard.GameModeMinFreeMB : s.Settings.Guard.MinFreeMB;
             _free.Set(Theme.Size(snap.FreeRamBytes), $"free · it steps in below {lowMB / 1024} GB", snap.FreeRamBytes >> 20 < lowMB ? t.Warn : t.Good);
-            var saves = s.Advice.Sum(a => a.SavingsBytes);
+            var saves = Advisor.TotalSavings(s.Advice);
             if (s.Advice.Count == 0) _save.Set("All clear", "no duplicates, no leftovers", t.Good);
             else if (saves > 0) _save.Set($"~{Theme.Size(saves)}", $"{s.Advice.Count} fix{(s.Advice.Count == 1 ? "" : "es")} could save", t.BrandText);
             else _save.Set($"{s.Advice.Count}", s.Advice.Count == 1 ? "thing to check" : "things to check", t.BrandText);
@@ -321,7 +321,8 @@ sealed class FixesPage : Page
         _shown = key;
 
         var cards = new List<Control>();
-        var needsYou = s.Advice.Where(a => !a.CanFix).ToList();
+        var needsYou = s.Advice.Where(a => !a.CanFix && a.Kind != AdviceKind.Commit).ToList();
+        cards.AddRange(s.Advice.Where(a => a.Kind == AdviceKind.Commit).Select(a => Build(a, primary: false))); // first: it is why the fixes below matter today
         if (fixable.Count == 0) cards.Add(AllClear(needsYou.Count > 0));
         cards.AddRange(fixable.Select(a => Build(a, primary: fixable.Count == 1)));
         if (needsYou.Count > 0)
@@ -362,6 +363,8 @@ sealed class FixesPage : Page
             AdviceKind.Duplicates => ("\uE8C8", a.CanFix ? t.BrandText : t.Muted),
             AdviceKind.NpxWrapper => ("\uE943", t.Muted),
             AdviceKind.Connections => ("\uE701", t.Warn),
+            AdviceKind.IdleSessions => ("\uE823", t.Warn),
+            AdviceKind.Commit => ("\uE7BA", t.Warn),
             _ => ("\uE9D9", t.BrandText),
         };
         var icon = new IconCircle(glyph, color) { BackColor = t.Surface, Location = new Point(Pad, Pad) };
@@ -392,7 +395,7 @@ sealed class FixesPage : Page
     {
         FlatButton? b = a.Kind switch
         {
-            AdviceKind.Orphans => new FlatButton("Close them", primary),
+            AdviceKind.Orphans or AdviceKind.IdleSessions => new FlatButton("Close them", primary),
             AdviceKind.BigApp when _s.Report is { } r => new FlatButton($"Cap at {Advisor.SuggestedCapMB(r.Snapshot.TotalRamBytes) / 1024} GB", primary),
             AdviceKind.Duplicates when a.CanFix => new FlatButton("Turn off", primary, glyph: "\uE7E8"),
             _ when a.ConfigPath is not null => new FlatButton("Open config"),
@@ -404,6 +407,7 @@ sealed class FixesPage : Page
         {
             if (_busy) return;
             if (a.Kind == AdviceKind.Orphans) _s.RunNow(true);
+            else if (a.Kind == AdviceKind.IdleSessions) { await Run(CloseIdle); _s.RunNow(false); }
             else if (a.Kind == AdviceKind.BigApp) { SetCap(a); await Recompute(); }
             else if (a.CanFix) await Run(() => Fixer.TurnOff(a.Title, a.Servers!));
             else MainForm.Open(a.ConfigPath!);
@@ -447,7 +451,7 @@ sealed class FixesPage : Page
         var cap = _s.Report is { } rep ? Advisor.SuggestedCapMB(rep.Snapshot.TotalRamBytes) / 1024 : 0;
         var steps = fixable.Select(a => "•  " + (a.Kind switch
         {
-            AdviceKind.Orphans => $"Close {a.Title}",
+            AdviceKind.Orphans or AdviceKind.IdleSessions => $"Close {a.Title}",
             AdviceKind.BigApp => $"{a.Title}: cap it at {cap} GB",
             _ => $"Turn off {string.Join(", ", a.Servers!.Select(s => s.Name).Distinct())} in {string.Join(", ", a.Servers!.Select(s => Advisor.Display(s.Path)).Distinct())}",
         }));
@@ -459,9 +463,16 @@ sealed class FixesPage : Page
         await Run(() =>
         {
             var failed = servers.Select(a => Fixer.TurnOff(a.Title, a.Servers!)).Where(r => !r.Ok).Select(r => r.Message).ToList();
+            if (fixable.Any(a => a.Kind == AdviceKind.IdleSessions)) CloseIdle();
             return failed.Count == 0 ? new FixResult(true, "") : new FixResult(false, string.Join("\n\n", failed));
         });
-        if (fixable.Any(a => a.Kind == AdviceKind.Orphans)) _s.RunNow(true);
+        if (fixable.Any(a => a.Kind is AdviceKind.Orphans or AdviceKind.IdleSessions)) _s.RunNow(fixable.Any(a => a.Kind == AdviceKind.Orphans));
+    }
+
+    FixResult CloseIdle()
+    {
+        Guard.CloseIdleSessions(Sessions.SuggestAfter(_s.Settings.Guard));
+        return new FixResult(true, "");
     }
 
     /// <summary>Off the UI thread (a config can be big), then the page shows the new state straight away.</summary>
@@ -491,7 +502,7 @@ sealed class FixesPage : Page
             {
                 var configs = KnownConfigs.Read();
                 var f = Fixer.Applied(configs);
-                return (report is null ? _s.Advice : Advisor.Advise(report, configs, f, caps), f);
+                return (report is null ? _s.Advice : Advisor.Advise(report, configs, f, caps, Sessions.FindIdle(report.Snapshot, _s.Settings.Guard)), f);
             });
         }
         catch (Exception e) { Log.Write($"fixes refresh failed: {e.Message}"); return; } // async void caller: the next round shows the new state
@@ -793,7 +804,7 @@ sealed class SettingsPage : Page
                 new Stepper { Min = 1, Max = 64, Value = g.MinFreeMB / 1024, Format = v => $"{v} GB" }, v => g.MinFreeMB = v * 1024),
             Row("Game mode: free RAM below", "Stricter limit while you play.",
                 new Stepper { Min = 1, Max = 64, Value = g.GameModeMinFreeMB / 1024, Format = v => $"{v} GB" }, v => g.GameModeMinFreeMB = v * 1024),
-            Row("Close idle Claude sessions after", "Closes a session and its MCP servers when nobody wrote in it for this long. Claude starts it again when you do; its Remote Control switches off.",
+            Row("Close idle Claude sessions after", "Closes a session and its MCP servers when nobody wrote in it for this long. Claude starts it again when you do (a background session with 'claude attach'); its Remote Control switches off.",
                 new Stepper { Min = 0, Max = 48, Value = g.CloseIdleSessionHours, Format = v => v == 0 ? "Never" : $"{v} h" }, v => g.CloseIdleSessionHours = v),
             Row("Check every", "How often to scan. Each scan takes a fraction of a second.",
                 new Stepper { Min = 1, Max = 30, Value = Math.Max(1, g.IntervalSeconds / 60), Format = v => $"{v} min" }, v => g.IntervalSeconds = v * 60));

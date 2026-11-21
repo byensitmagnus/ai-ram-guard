@@ -336,8 +336,9 @@ sealed class AppList : Painted
             var right = Width - 96;
             DrawText(g, a.Profile.Name, T.Bold, T.Text, new RectangleF(textX, y + 8, right - textX, 22));
             // The insight is the duplicates: "desktop-commander ×48" as an orange chip, not muted small print.
-            var procs = $"{a.Processes.Count} processes";
-            DrawText(g, procs, T.Small, T.Muted, new RectangleF(textX, y + 28, 120, 18));
+            // The bar is RAM in use now. A trimmed app holds far more in the pagefile, and that is what closing gives back.
+            var procs = $"{a.Processes.Count} processes" + (a.HeldBytes - a.Bytes > 1L << 30 ? $" · {Theme.Size(a.HeldBytes)} with pagefile" : "");
+            DrawText(g, procs, T.Small, T.Muted, new RectangleF(textX, y + 28, TextWidth(procs, T.Small) + 8, 18));
             var chipX = textX + TextWidth(procs, T.Small) + 10f;
             foreach (var h in a.Helpers.Take(3))
             {

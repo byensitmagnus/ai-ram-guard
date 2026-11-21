@@ -95,7 +95,7 @@ sealed class TrayContext : ApplicationContext
                 var after = r.Killed + r.Trimmed > 0 && !dryRun ? Guard.Scan(_state.Profiles) : inspected.Report;
                 var configs = KnownConfigs.Read();
                 var applied = Fixer.Applied(configs);
-                return (r, after, Advisor.Advise(after, configs, applied, s.Guard.AgentCapsMB), applied, game);
+                return (r, after, Advisor.Advise(after, configs, applied, s.Guard.AgentCapsMB, Sessions.FindIdle(after.Snapshot, s.Guard)), applied, game);
             });
             if (_state.Paused) Guard.RestorePriorities(); // you paused while this round ran: it lowered after the pause restored
 

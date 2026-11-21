@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0 — 2026-11-21
+
+The numbers were too kind. The app counted RAM in use right now, and its own trimming moves idle memory to the pagefile: 90 copies of an MCP server showed as 760 MB while they held 6.6 GB.
+
+- Every app and helper is now also measured by what it holds, RAM and pagefile together. That is what closing it gives back. *Fixes* and the Overview's "fixes could save" use it, and each process counts once although several fixes would close it. The app list shows "39 GB with pagefile" next to an app that holds far more than its RAM. `airg scan` has a `held` column (`heldMB`, `commitMB`, `commitLimitMB` in `--json`).
+- *Fixes* warns when Windows has handed out 85 % of all the memory it can (RAM plus pagefile). At the limit, apps crash or won't start, however much RAM is free. Freeing RAM doesn't lower it, closing does.
+- New fix: **Close them** for Claude sessions nobody wrote in for 3 hours (or your own *Close idle Claude sessions after*). It scans again first, so a session you wrote in since stays. The conversation is kept.
+- Idle sessions now include `claude --bg` background sessions, not only the desktop app's. A closed one is listed as stopped; `claude attach` resumes it.
+- A session waiting for a subagent is not idle: subagents and tool results write next to the transcript, and that now counts as activity. Looking a session up no longer walks every project folder.
+
 ## 1.5.0 — 2026-11-04
 
 - Close idle Claude sessions: *Settings → Limits → Close idle Claude sessions after* (off by default). Claude (Desktop / Code) keeps every session's process and MCP servers running until the app closes; a session nobody wrote in for that many hours is closed with everything it started. When you write in it again, Claude starts it with the same conversation (tested). Its Remote Control switches off. Idle time comes from the session's transcript, so a session without one is never closed. `airg clean` and `airg watch` take `--close-idle HOURS`.
