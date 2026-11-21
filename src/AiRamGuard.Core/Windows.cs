@@ -109,7 +109,7 @@ public static class Guard
         var plan = Policy.Decide(report, s, fg, game, force);
         var paused = s.PausedUntil is { } until && until > DateTime.Now;
         if (s.CloseIdleSessionHours > 0 && !paused)
-            plan = plan with { Close = Sessions.FindIdle(report.Snapshot, TimeSpan.FromHours(s.CloseIdleSessionHours), Sessions.LastWrite, DateTime.Now) };
+            plan = plan with { Close = Sessions.FindIdle(report.Snapshot, TimeSpan.FromHours(s.CloseIdleSessionHours)) };
         return (report, plan);
     }
 
@@ -171,7 +171,7 @@ public static class Guard
         {
             var closed = dryRun ? session.Processes.Count : session.Processes.Count(TryKill);
             if (closed == 0) continue;
-            killed += closed; freed += session.Bytes;
+            killed += closed; freed += session.Processes.Sum(p => p.WorkingSetBytes); // RAM, like the rest of "freed"; the log line says what it held
             Log.Write($"{(dryRun ? "would close" : "closed")} Claude session {session.Id[..8]}, idle {session.Idle.TotalHours:0.#} h: {closed} processes, {session.Bytes >> 20} MB");
         }
         return (killed, freed);
@@ -181,7 +181,7 @@ public static class Guard
     public static CleanResult CloseIdleSessions(TimeSpan min)
     {
         var snap = SnapshotReader.Read();
-        var (killed, freed) = Close(Sessions.FindIdle(snap, min, Sessions.LastWrite, DateTime.Now), dryRun: false);
+        var (killed, freed) = Close(Sessions.FindIdle(snap, min), dryRun: false);
         return new CleanResult(killed, 0, snap.FreeRamBytes, FreeRamBytes(), "idle sessions", freed);
     }
 

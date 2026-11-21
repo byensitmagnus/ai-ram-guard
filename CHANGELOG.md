@@ -8,7 +8,7 @@ The numbers were too kind. The app counted RAM in use right now, and its own tri
 - *Fixes* warns when Windows has handed out 85 % of all the memory it can (RAM plus pagefile). At the limit, apps crash or won't start, however much RAM is free. Freeing RAM doesn't lower it, closing does.
 - New fix: **Close them** for Claude sessions nobody wrote in for 3 hours (or your own *Close idle Claude sessions after*). It scans again first, so a session you wrote in since stays. The conversation is kept.
 - Idle sessions now include `claude --bg` background sessions, not only the desktop app's. A closed one is listed as stopped; `claude attach` resumes it.
-- A session waiting for a subagent is not idle: subagents and tool results write next to the transcript, and that now counts as activity. Looking a session up no longer walks every project folder.
+- A session that works without writing is not idle. One Claude itself marks as busy is never closed, and writes by subagents, tool results and background jobs count as activity. A session you cleared with `/clear` is judged by its new conversation. Looking a session up no longer walks every project folder.
 
 ## 1.5.0 — 2026-11-04
 

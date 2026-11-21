@@ -32,7 +32,7 @@ public static class Advisor
         if (snap.CommitLimitBytes > 0 && snap.CommitBytes >= snap.CommitLimitBytes * CommitWarn)
             list.Add(new Advice(AdviceKind.Commit,
                 $"Windows is close to its memory limit: {Gb(snap.CommitLimitBytes - snap.CommitBytes)} GB left",
-                $"Programs have reserved {Gb(snap.CommitBytes)} of the {Gb(snap.CommitLimitBytes)} GB Windows can hand out (RAM plus pagefile). At the limit, apps crash or won't start, even with free RAM. "
+                $"Programs have reserved {Gb(snap.CommitBytes)} of the {Gb(snap.CommitLimitBytes)} GB Windows can hand out right now (RAM plus pagefile). When it can't grow the pagefile further, apps crash or won't start, even with free RAM. "
                 + $"Freeing RAM doesn't lower it, closing does. AI apps hold {Gb(r.Agents.Sum(a => a.HeldBytes) + r.Orphans.Sum(o => o.HeldBytes))} GB of it.", 0));
 
         if (idle is { Count: > 0 })

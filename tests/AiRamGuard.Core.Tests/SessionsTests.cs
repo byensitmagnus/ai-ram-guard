@@ -56,8 +56,8 @@ public class SessionsTests
             Claude(50, 1, $"--bg-pty-host pipe-24e2bb86 80 24 -- {exe} --resume {Old} --remote-control", 8, 150),
             Claude(51, 50, $"--resume {Old} --remote-control --permission-mode default", 8, 900),
             Child(52, 51, 8),
-            Claude(60, 1, $"--bg-pty-host pipe-44fbcd70 200 50 -- {exe} --session-id {Fresh} -n \"x\" \"do --resume nothing\"", 8),
-            Claude(61, 60, $"--session-id {Fresh} -n \"x\" \"do --resume nothing\"", 8),
+            Claude(60, 1, $"--bg-pty-host pipe-44fbcd70 200 50 -- {exe} --session-id {Fresh} -n \"x\" \"do --resume {Old} now\"", 8),
+            Claude(61, 60, $"--session-id {Fresh} -n \"x\" \"do --resume {Old} now\"", 8), // the id is the flag's, not the one in the prompt
         };
         var idle = Assert.Single(Find(procs, new() { [Old] = Now.AddHours(-3), [Fresh] = Now.AddMinutes(-10) }));
         Assert.Equal(Old, idle.Id);
@@ -67,5 +67,17 @@ public class SessionsTests
         // --resume with the transcript's path instead of the id
         var byPath = new[] { procs[0], Claude(70, 1, "--bg-pty-host pipe 80 24 -- x", 8), Claude(71, 70, $@"--resume C:\Users\me\.claude\projects\p\{Old}.jsonl", 8) };
         Assert.Equal(Old, Assert.Single(Find(byPath, new() { [Old] = Now.AddHours(-3) })).Id);
+    }
+
+    [Fact]
+    public void Claudes_own_record_wins_a_busy_session_stays_and_a_cleared_one_is_judged_by_its_new_transcript()
+    {
+        var procs = new[] { Session(10, Old, 25), Session(20, Old, 25) };
+        var writes = new Dictionary<string, DateTime> { [Old] = Now.AddHours(-13), [Fresh] = Now.AddMinutes(-5) };
+        IReadOnlyList<IdleSession> With(Func<ProcessInfo, Sessions.State?> registered) =>
+            Sessions.FindIdle(new Snapshot(procs, 0, 0), TimeSpan.FromHours(2), id => writes.TryGetValue(id, out var w) ? w : null, Now, registered);
+
+        Assert.Equal([20], With(p => p.Pid == 10 ? new(Old, Busy: true) : null).Select(s => s.Processes[0].Pid)); // 10 runs a long build
+        Assert.Equal([20], With(p => p.Pid == 10 ? new(Fresh, Busy: false) : null).Select(s => s.Processes[0].Pid)); // 10 was /clear-ed: it writes to Fresh now
     }
 }

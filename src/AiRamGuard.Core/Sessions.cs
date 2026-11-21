@@ -24,10 +24,18 @@ public static class Sessions
     /// <summary>Idle time for the Fixes card: the user's own setting, or 3 hours when closing by itself is off.</summary>
     public static TimeSpan SuggestAfter(GuardSettings s) => TimeSpan.FromHours(s.CloseIdleSessionHours > 0 ? s.CloseIdleSessionHours : 3);
 
-    public static IReadOnlyList<IdleSession> FindIdle(Snapshot snap, GuardSettings s) => FindIdle(snap, SuggestAfter(s), LastWrite, DateTime.Now);
+    public static IReadOnlyList<IdleSession> FindIdle(Snapshot snap, GuardSettings s) => FindIdle(snap, SuggestAfter(s));
+
+    /// <summary>Against the real disk: transcripts, and Claude's own word on whether a session is busy.</summary>
+    public static IReadOnlyList<IdleSession> FindIdle(Snapshot snap, TimeSpan min) => FindIdle(snap, min, LastWrite, DateTime.Now, Registered);
+
+    /// <summary>What Claude Code says about one of its own session processes.</summary>
+    /// <param name="Id">The session it runs now: /clear gives a process a new one, and the command line keeps the old.</param>
+    public sealed record State(string Id, bool Busy);
 
     /// <param name="lastWrite">When the session last wrote anything, or null when it has no transcript.</param>
-    public static IReadOnlyList<IdleSession> FindIdle(Snapshot snap, TimeSpan min, Func<string, DateTime?> lastWrite, DateTime now)
+    /// <param name="registered">Claude's own record of the process, or null when it keeps none.</param>
+    public static IReadOnlyList<IdleSession> FindIdle(Snapshot snap, TimeSpan min, Func<string, DateTime?> lastWrite, DateTime now, Func<ProcessInfo, State?>? registered = null)
     {
         var children = snap.Processes.ToLookup(p => p.ParentPid);
         var byPid = snap.Processes.ToDictionary(p => p.Pid);
@@ -40,7 +48,9 @@ public static class Sessions
             if ((host is null ? DesktopSession : BackgroundSession).Match(p.CommandLine) is not { Success: true } m) continue;
             if (p.Created == DateTime.MinValue) continue; // unknown start: TryKill couldn't check it is still the same process
             if (now - p.Created < min) continue; // also spares the disk: no transcript lookup for a young session
-            var id = m.Groups[1].Value;
+            var state = registered?.Invoke(p);
+            if (state is { Busy: true }) continue; // working without writing: a long build, a job in the background
+            var id = state?.Id ?? m.Groups[1].Value;
             if (lastWrite(id) is not { } w) continue; // no transcript where we look (another config dir): we can't tell it is idle
             // A process started after the last write is a session just reopened: count from its start.
             var last = w > p.Created ? w : p.Created;
@@ -62,8 +72,8 @@ public static class Sessions
     }
 
     /// <summary>
-    /// The last write to ~\.claude\projects\&lt;project&gt;\&lt;id&gt;.jsonl or to the folder next to it. Subagents and tool results
-    /// write there, not in the transcript: a session waiting an hour for a subagent is not idle.
+    /// The last write to ~\.claude\projects\&lt;project&gt;\&lt;id&gt;.jsonl, to the folder next to it (subagents, tool results) or to
+    /// %TEMP%\claude\*\&lt;id&gt; (output of background jobs): a session waiting an hour for a subagent or a build is not idle.
     /// </summary>
     public static DateTime? LastWrite(string id)
     {
@@ -76,15 +86,38 @@ public static class Sessions
             {
                 var transcript = Path.Combine(project, id + ".jsonl");
                 if (!File.Exists(transcript)) continue;
-                var w = File.GetLastWriteTime(transcript);
-                var side = Path.Combine(project, id);
-                if (Directory.Exists(side))
-                    foreach (var f in new DirectoryInfo(side).EnumerateFiles("*", SearchOption.AllDirectories))
-                        if (f.LastWriteTime > w) w = f.LastWriteTime;
+                var w = Newest(Path.Combine(project, id), File.GetLastWriteTime(transcript));
                 if (last is null || w > last) last = w;
             }
+            var temp = Path.Combine(Path.GetTempPath(), "claude");
+            if (last is { } t && Directory.Exists(temp))
+                foreach (var scope in Directory.EnumerateDirectories(temp)) last = t = Newest(Path.Combine(scope, id), t);
             return last;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    static DateTime Newest(string dir, DateTime atLeast)
+    {
+        if (Directory.Exists(dir))
+            foreach (var f in new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories))
+                if (f.LastWriteTime > atLeast) atLeast = f.LastWriteTime;
+        return atLeast;
+    }
+
+    /// <summary>~\.claude\sessions\&lt;pid&gt;.json, only while it describes this process and not an older one with the same PID.</summary>
+    public static State? Registered(ProcessInfo p)
+    {
+        try
+        {
+            var file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "sessions", p.Pid + ".json");
+            if (!File.Exists(file)) return null;
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(file));
+            var r = doc.RootElement;
+            if (!long.TryParse(r.GetProperty("procStart").GetString(), out var start) || Math.Abs((DateTime.FromFileTime(start) - p.Created).TotalSeconds) > 2) return null;
+            return r.GetProperty("sessionId").GetString() is { Length: > 0 } id
+                ? new State(id, r.TryGetProperty("status", out var s) && s.GetString() == "busy") : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException or ArgumentOutOfRangeException) { return null; }
     }
 }
