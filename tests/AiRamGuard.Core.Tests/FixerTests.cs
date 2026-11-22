@@ -58,6 +58,28 @@ public sealed class FixerTests : IDisposable
     }
 
     [Fact]
+    public void A_claude_desktop_plugin_is_switched_off_with_enabled_false_and_undo_switches_it_on()
+    {
+        var plugins = Path.Combine(_root, "plugins.json");
+        const string original = "{\n  \"plugins\": [\n    {\n      \"id\": \"desktop-commander@kwp\",\n      \"name\": \"desktop-commander\",\n      \"enabled\": true\n    },\n    {\n      \"id\": \"data@kwp\",\n      \"name\": \"data\",\n      \"enabled\": true\n    }\n  ]\n}\n";
+        File.WriteAllText(plugins, original);
+
+        var found = McpServers.Find("@wonderwhy-er/desktop-commander", [Read("Claude Desktop", plugins)]);
+        Assert.Equal("desktop-commander", Assert.Single(found).Name);
+
+        var r = Fixer.TurnOff("desktop-commander", found, Records);
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("restart", r.Message);
+        var after = JsonNode.Parse(File.ReadAllText(plugins))!["plugins"]!.AsArray();
+        Assert.False((bool)after[0]!["enabled"]!);
+        Assert.True((bool)after[1]!["enabled"]!);
+        Assert.True(McpServers.IsOff("@wonderwhy-er/desktop-commander", [Read("Claude Desktop", plugins)]));
+
+        Assert.True(Fixer.Undo(Fixer.History(Records).Single().Id, Records).Ok);
+        Assert.Equal(original, File.ReadAllText(plugins));
+    }
+
+    [Fact]
     public void Json_turn_off_removes_only_the_server_and_undo_puts_back_exactly_what_was_there()
     {
         var before = JsonNode.Parse(File.ReadAllText(Claude));

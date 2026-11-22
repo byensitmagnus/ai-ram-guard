@@ -32,6 +32,20 @@ public class AdvisorTests
     }
 
     [Fact]
+    public void A_server_started_by_a_fixable_launcher_is_part_of_that_fix_not_a_card_of_its_own()
+    {
+        var launchers = Enumerable.Range(10, 3).Select(i => new ProcessInfo(i, 1, "python.exe", "python C:\\mail\\email-mcp-launch.py", 100 * MB, DateTime.Now)).ToList();
+        var servers = launchers.Select(l => new ProcessInfo(l.Pid + 10, l.Pid, "node.exe", "node C:\\n\\node_modules\\@codefuturist\\email-mcp\\dist\\index.js", 200 * MB, DateTime.Now)).ToList();
+        var configs = new[] { new ConfigFile("Claude Code", "C:\\.claude.json", "{\"mcpServers\":{\"byens-mail\":{\"command\":\"python\",\"args\":[\"C:\\\\mail\\\\email-mcp-launch.py\"]}}}") };
+
+        var dup = Assert.Single(Advisor.Advise(Build([.. launchers, .. servers]), configs), a => a.Kind == AdviceKind.Duplicates);
+        Assert.Contains("email-mcp-launch.py", dup.Title);
+        Assert.True(dup.CanFix);
+        Assert.Equal(2 * 100 * MB + 2 * 200 * MB, dup.SavingsBytes);
+        Assert.Contains("@codefuturist/email-mcp", dup.Detail);
+    }
+
+    [Fact]
     public void Npx_wrappers_get_their_own_advice()
     {
         var procs = new[] { P(1, Npx, 90), P(2, Npx, 90), P(3, Server), P(4, Server) };

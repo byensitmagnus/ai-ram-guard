@@ -27,6 +27,7 @@ public static class Advisor
     {
         var list = new List<Advice>();
         var snap = r.Snapshot;
+        var byPid = snap.Processes.GroupBy(p => p.Pid).ToDictionary(g => g.Key, g => g.First());
 
         // Savings are what closing gives back (RAM + pagefile), not the working set: the guard's own trimming shrinks that to almost nothing.
         if (snap.CommitLimitBytes > 0 && snap.CommitBytes >= snap.CommitLimitBytes * CommitWarn)
@@ -52,20 +53,43 @@ public static class Advisor
         foreach (var a in r.Agents)
         {
             var own = ConfigsFor(a.Profile.Id, configs);
+            var dups = new List<(HelperGroup H, IReadOnlyList<ServerEntry> Servers)>();
             foreach (var h in a.Helpers.Where(h => h.Count >= 3 && h.HeldBytes - h.HeldBytes / h.Count >= MinSavings))
             {
                 var servers = McpServers.Find(h.Key, own);
                 if (servers.Count == 0 && (McpServers.IsOff(h.Key, own) || Term(h.Key) is { } term
                         && (applied ?? []).Any(f => f.Entries.Any(e => e.Definition.Contains(term, StringComparison.OrdinalIgnoreCase)))))
                     continue; // switched off already: the copies go as their sessions close
+                dups.Add((h, servers));
+            }
+
+            // A launcher script that starts the real server (email-mcp-launch.py → @codefuturist/email-mcp): one config entry, so one fix. The server's own card would say "turn it off in the app".
+            var children = dups.Where(d => d.Servers.Count == 0).Select(d => (d, parent: dups.FirstOrDefault(f => f.Servers.Count > 0 && d.H.Processes.All(p =>
+                Analyzer.Ancestors(p, byPid).Any(x => f.H.Processes.Any(y => y.Pid == x.Pid)))))).Where(x => x.parent.H is not null).ToList();
+
+            foreach (var d in dups.Where(d => !children.Any(c => c.d == d)))
+            {
+                var (h, servers) = d;
+                var frees = h.Processes.Skip(1).ToList();
+                var bytes = h.HeldBytes - h.HeldBytes / h.Count;
+                foreach (var c in children.Where(c => c.parent == d))
+                {
+                    var freed = c.d.H.Processes.Where(p => Analyzer.Ancestors(p, byPid).Any(x => frees.Any(y => y.Pid == x.Pid))).ToList();
+                    frees.AddRange(freed);
+                    bytes += freed.Sum(p => p.HeldBytes);
+                }
                 var config = FindConfig(h.Key, own);
-                var detail = servers.Count > 0
+                var detail = servers.Count > 0 && servers.All(x => x.Section == "plugins")
+                    ? $"Every {a.Profile.Name} session starts its own copy. It comes from the plugin \"{servers[0].Name}\", which also has skills: turning the plugin off removes those too. It takes effect when Claude Desktop restarts, and you can turn it back on here."
+                    : servers.Count > 0
                     ? $"Every {a.Profile.Name} session starts its own copy. It's switched on {Describe(servers)}. Turn it off if you don't use it; you can turn it back on here."
                     : config is null
                         ? $"Every {a.Profile.Name} session starts its own copy. It comes from the app itself or a plugin, not from a config file, so it can only be turned off in the app."
                         : $"Every {a.Profile.Name} session starts its own copy. It's configured in {Display(config.Path)} in a way AI RAM Guard doesn't change (comments, or an unusual layout): turn it off there.";
+                if (children.Any(c => c.parent == d))
+                    detail += $" It also starts {string.Join(", ", children.Where(c => c.parent == d).Select(c => c.d.H.Key))}, which goes with it.";
                 list.Add(new Advice(AdviceKind.Duplicates, $"{h.Key} runs {h.Count}× under {a.Profile.Name}", detail,
-                    h.HeldBytes - h.HeldBytes / h.Count, config?.Path, servers, a.Profile.Id, h.Processes.Skip(1).ToList()));
+                    bytes, config?.Path, servers, a.Profile.Id, frees));
             }
 
             foreach (var g in Analyzer.GroupHelpers(a.Processes.Where(p => p.CommandLine.Contains("npx-cli.js", StringComparison.OrdinalIgnoreCase))))
@@ -85,10 +109,15 @@ public static class Advisor
                     0, AgentId: a.Profile.Id));
 
             if (a.Connections >= ManyConnections)
+            {
+                // Each process owns its sockets: they can't be pooled, only fewer copies hold fewer. Name who holds them, so the user knows which server to turn off.
+                var top = a.Helpers.Where(h => h.Processes.Sum(p => p.Connections) >= 10).OrderByDescending(h => h.Processes.Sum(p => p.Connections)).Take(3)
+                    .Select(h => $"{h.Key} ({h.Processes.Sum(p => p.Connections)})").ToList();
                 list.Add(new Advice(AdviceKind.Connections,
                     $"{a.Profile.Name} holds {a.Connections} internet connections",
-                    $"Spread over {a.Processes.Count} processes. {PoolWhy} Close the sessions you don't use.",
+                    $"Spread over {a.Processes.Count} processes" + (top.Count > 0 ? $", most in {string.Join(", ", top)}. Every session opens its own, so fewer copies of those means fewer connections" : "") + $". {PoolWhy} Close the sessions you don't use.",
                     0, AgentId: a.Profile.Id));
+            }
         }
 
         var holders = r.Snapshot.Processes.Where(p => p.Connections > 0).ToList();
@@ -232,6 +261,7 @@ public static class KnownConfigs
             ("Claude Code", Path.Combine(home, ".claude.json")),
             ("Claude Code", Path.Combine(home, ".claude", "settings.json")),
             ("Claude Desktop", Path.Combine(appData, "Claude", "claude_desktop_config.json")),
+            .. PluginLists(appData),
             ("Codex", Path.Combine(home, ".codex", "config.toml")),
             ("Cursor", Path.Combine(home, ".cursor", "mcp.json")),
             ("Windsurf", Path.Combine(home, ".codeium", "windsurf", "mcp_config.json")),
@@ -256,6 +286,14 @@ public static class KnownConfigs
             catch (UnauthorizedAccessException) { }
         }
         return list;
+    }
+
+    /// <summary>Claude Desktop's plugin lists, one per account: %APPDATA%\Claude\plugin-list\{org}\{account}\plugins.json.</summary>
+    static IEnumerable<(string, string)> PluginLists(string appData)
+    {
+        var dir = Path.Combine(appData, "Claude", "plugin-list");
+        try { return Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "plugins.json", new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 2 }).Select(f => ("Claude Desktop", f)).ToList() : []; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return []; }
     }
 
     static readonly Dictionary<string, (DateTime Stamp, string Content)> Cache = [];

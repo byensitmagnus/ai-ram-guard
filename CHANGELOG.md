@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- New fix: **Turn off** for a server that comes from a Claude Desktop plugin (for example `desktop-commander`), which has no config entry. It sets `"enabled": false` for the plugin in Claude Desktop's `plugin-list\…\plugins.json`, with a backup and **Turn on again**. The plugin's skills go too, and it takes effect when Claude Desktop restarts.
+- A server started by a launcher script (`email-mcp-launch.py` starting `@codefuturist/email-mcp`) is now one fix, not two. The server's own card said "turn it off in the app" although switching off the launcher's config entry removes both. Its memory counts in the launcher's fix.
+- The internet-connection warning names the helpers that hold most of the connections ("most in @codefuturist/email-mcp (96)"), so you know which server to turn off.
+
 ## 1.6.1 — 2026-11-21
 
 - The memory-limit warning no longer waits on the *Fixes* page. The Overview's status line, the notification-area tooltip and the ring (orange) show it, and a notification tells you once, at most every 4 hours (with *Notifications* on).

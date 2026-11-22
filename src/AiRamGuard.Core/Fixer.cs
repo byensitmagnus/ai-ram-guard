@@ -44,6 +44,10 @@ public static class McpServers
             foreach (var section in new[] { "mcpServers", "servers" })
                 if (root[section] is JsonObject s)
                     foreach (var (name, def) in Servers(s, on)) list.Add((new(c.App, c.Path, section, name), name + " " + def));
+            if (Path.GetFileName(c.Path) == "plugins.json" && root["plugins"] is JsonArray plugins)
+                foreach (var p in plugins)
+                    if (p is JsonObject o && o["name"] is JsonValue v && v.TryGetValue<string>(out var name) && (o["enabled"]?.GetValueKind() == JsonValueKind.False) != on)
+                        list.Add((new(c.App, c.Path, "plugins", name), name));
             if (root["projects"] is JsonObject projects)
                 foreach (var (project, p) in projects)
                     if (p?["mcpServers"] is JsonObject s)
@@ -52,6 +56,10 @@ public static class McpServers
         catch (Exception e) when (e is InvalidOperationException or ArgumentException) { list.Clear(); } // duplicate keys or odd shapes: not ours to rewrite
         return list;
     }
+
+    /// <summary>A Claude Desktop plugin in its plugins.json: it is switched off with "enabled": false, not removed.</summary>
+    internal static JsonObject? FindPlugin(JsonObject root, string name) =>
+        (root["plugins"] as JsonArray)?.OfType<JsonObject>().FirstOrDefault(o => o["name"] is JsonValue v && v.TryGetValue<string>(out var n) && n == name);
 
     /// <summary>"disabled": true is how Cline-style configs switch one off.</summary>
     static IEnumerable<(string, string)> Servers(JsonObject s, bool on) =>
@@ -269,6 +277,13 @@ public static class Fixer
                 if (JsonText.Parse(text) is not JsonObject root) return (text, done, "it has comments or isn't plain JSON, so AI RAM Guard leaves it alone");
                 foreach (var s in group)
                 {
+                    if (s.Section == "plugins")
+                    {
+                        if (McpServers.FindPlugin(root, s.Name) is not { } plugin || plugin["enabled"]?.GetValueKind() == JsonValueKind.False) continue;
+                        plugin["enabled"] = false;
+                        done.Add(new FixEntry(s, s.Name, "plugin"));
+                        continue;
+                    }
                     if (JsonText.Container(root, s, create: false) is not { } box || box[s.Name] is not JsonObject server) continue;
                     var saved = server.ToJsonString();
                     box.Remove(s.Name);
@@ -296,7 +311,8 @@ public static class Fixer
         }
         TrySave(records, file);
         foreach (var e in record.Entries) Log.Write($"turned off {e.Server.Name} in {Where(e.Server)}");
-        var msg = $"Turned off {string.Join(", ", record.Entries.Select(e => e.Server.Name).Distinct())}. New sessions start without it; open sessions keep their copy until you close them.";
+        var msg = $"Turned off {string.Join(", ", record.Entries.Select(e => e.Server.Name).Distinct())}. New sessions start without it; open sessions keep their copy until you close them."
+            + (record.Entries.Any(e => e.Server.Section == "plugins") ? " A plugin is read when Claude Desktop starts: restart it for this to count." : "");
         return new(true, problems.Count > 0 ? msg + "\nNot changed: " + string.Join("\n", problems) : msg);
     }
 
@@ -325,6 +341,11 @@ public static class Fixer
                 if (JsonText.Parse(text) is not JsonObject root) return (text, done, "it isn't plain JSON any more");
                 foreach (var e in group)
                 {
+                    if (e.Server.Section == "plugins")
+                    {
+                        if (McpServers.FindPlugin(root, e.Server.Name) is { } plugin) { plugin["enabled"] = true; done.Add(e); }
+                        continue;
+                    }
                     if (JsonText.Container(root, e.Server, create: true) is not { } box) { noProject.Add(e.Server.Project!); continue; }
                     if (box.ContainsKey(e.Server.Name) || e.Saved is null) continue; // on again already, by you or the app
                     box[e.Server.Name] = JsonNode.Parse(e.Saved);
