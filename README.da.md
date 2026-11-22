@@ -43,7 +43,7 @@ Windows havde delt 57,7 ud af de 63,0 GB, den kunne.
 - **Viser det rigtige tal.** RAM og det, der holdes med sidefilen, pr. AI-program og pr. MCP-server.
 - **Advarer før grænsen.** Når Windows har delt 85 % ud, ser du det på Overview, på ikonet og i en notifikation.
 - **Lukker inaktive Claude-sessioner.** Ét klik lukker sessioner, ingen har skrevet i i timevis, med deres MCP-servere. Samtalen er gemt: Claude starter sessionen igen, når du skriver i den.
-- **Finder årsagen.** Den viser, hvilken MCP-server der kører i mange kopier, og hvilken config-fil der starter den. **Turn off** retter filen, og du kan fortryde.
+- **Finder årsagen.** Den viser, hvilken MCP-server der kører i mange kopier, og hvilken config-fil der starter den. **Turn off** retter filen, og du kan fortryde. En server uden tilstand får **Share one copy**: én HTTP-kopi til alle Claude Code-sessioner (52 mailservere, 2,8 GB, blev til to).
 - **Lukker efterladte hjælpere**, når deres AI-program er væk.
 - **Frigør RAM uden at lukke noget.** Programmet, du arbejder i, bliver aldrig rørt.
 - **Giver dit spil plads.** Strammere grænse, mens et spil kører i fuld skærm, og lavere prioritet til AI-programmer i baggrunden.

@@ -7,7 +7,7 @@ public enum AdviceKind { Orphans, Duplicates, NpxWrapper, BigApp, Connections, I
 /// <param name="AgentId">The AI app it is about (for a cap).</param>
 /// <param name="Frees">The processes the fix closes. Fixes overlap (an idle session's servers are also somebody's duplicates): see <see cref="Advisor.TotalSavings"/>.</param>
 public sealed record Advice(AdviceKind Kind, string Title, string Detail, long SavingsBytes, string? ConfigPath = null,
-    IReadOnlyList<ServerEntry>? Servers = null, string? AgentId = null, IReadOnlyList<ProcessInfo>? Frees = null)
+    IReadOnlyList<ServerEntry>? Servers = null, string? AgentId = null, IReadOnlyList<ProcessInfo>? Frees = null, bool Share = false)
 {
     /// <summary>The app can do this one itself; the others need the user (a plugin setting, an npm install).</summary>
     public bool CanFix => Kind is AdviceKind.Orphans or AdviceKind.BigApp or AdviceKind.IdleSessions || Servers is { Count: > 0 };
@@ -23,7 +23,7 @@ public static class Advisor
     /// <param name="caps">Apps that have a cap already need no cap advice.</param>
     /// <param name="idle">Claude sessions nobody wrote in for hours, see <see cref="Sessions.FindIdle(Snapshot, GuardSettings)"/>.</param>
     public static IReadOnlyList<Advice> Advise(Report r, IReadOnlyList<ConfigFile> configs, IReadOnlyList<FixRecord>? applied = null, IReadOnlyDictionary<string, int>? caps = null,
-        IReadOnlyList<IdleSession>? idle = null)
+        IReadOnlyList<IdleSession>? idle = null, IReadOnlyList<ShareSpec>? shareable = null) // shareable: from the profiles, servers that can run once for all sessions
     {
         var list = new List<Advice>();
         var snap = r.Snapshot;
@@ -88,8 +88,11 @@ public static class Advisor
                         : $"Every {a.Profile.Name} session starts its own copy. It's configured in {Display(config.Path)} in a way AI RAM Guard doesn't change (comments, or an unusual layout): turn it off there.";
                 if (children.Any(c => c.parent == d))
                     detail += $" It also starts {string.Join(", ", children.Where(c => c.parent == d).Select(c => c.d.H.Key))}, which goes with it.";
+                var canShare = shareable is { Count: > 0 } && servers.Any(s => Shares.Spec(s, own, shareable) is not null);
+                if (canShare)
+                    detail = $"Every {a.Profile.Name} session starts its own copy. It can run as one copy for all Claude Code sessions instead: you keep the tool, and the sessions stay apart. Or turn it off if you don't use it. Both can be undone here.";
                 list.Add(new Advice(AdviceKind.Duplicates, $"{h.Key} runs {h.Count}× under {a.Profile.Name}", detail,
-                    bytes, config?.Path, servers, a.Profile.Id, frees));
+                    bytes, config?.Path, servers, a.Profile.Id, frees, canShare));
             }
 
             foreach (var g in Analyzer.GroupHelpers(a.Processes.Where(p => p.CommandLine.Contains("npx-cli.js", StringComparison.OrdinalIgnoreCase))))

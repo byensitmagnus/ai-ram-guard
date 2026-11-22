@@ -9,6 +9,16 @@
     "desktop-commander",
     "server\\.mjs"
   ],
+  "shareable": [
+    {
+      "$comment": "Stateless over HTTP: every request stands alone, so sessions sharing one copy stay apart. Needs a token and listens on 127.0.0.1 only. AI RAM Guard checks that it answers several requests before it changes a config.",
+      "match": "email-mcp",
+      "stdioArg": "stdio",
+      "httpArgs": ["http", "--port", "{port}"],
+      "tokenEnv": "EMAIL_MCP_HTTP_TOKEN",
+      "path": "/mcp"
+    }
+  ],
   "agents": [
     {
       "id": "claude",

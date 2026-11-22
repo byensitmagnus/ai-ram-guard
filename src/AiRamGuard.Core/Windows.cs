@@ -262,6 +262,9 @@ public static class Guard
     /// <summary>A RAM tool should practise what it preaches: drop our own idle pages between rounds.</summary>
     public static void TrimSelf() => Native.TrimWorkingSet(Environment.ProcessId);
 
+    /// <summary>Closes one process after checking it is still the same one (the PID could have been reused).</summary>
+    internal static bool Close(ProcessInfo p) => TryKill(p);
+
     static bool TryKill(ProcessInfo p)
     {
         try

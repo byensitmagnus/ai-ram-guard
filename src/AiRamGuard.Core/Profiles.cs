@@ -30,6 +30,8 @@ public sealed class ProfileSet
 {
     public string[] HelperPatterns { get; init; } = [];
     public AgentProfile[] Agents { get; init; } = [];
+    /// <summary>MCP servers that can run as one copy for every session: see <see cref="ShareSpec"/>.</summary>
+    public ShareSpec[] Shareable { get; init; } = [];
 
     Regex? _helper;
     Regex HelperRegex => _helper ??= new Regex(
@@ -73,6 +75,7 @@ public sealed class ProfileSet
         return new ProfileSet
         {
             HelperPatterns = [.. builtIn.HelperPatterns, .. user.HelperPatterns],
+            Shareable = [.. user.Shareable, .. builtIn.Shareable],
             Agents = [.. user.Agents, .. builtIn.Agents.Where(b => user.Agents.All(u => u.Id != b.Id))],
         };
     }

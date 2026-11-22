@@ -333,7 +333,9 @@ sealed class FixesPage : Page
         }
         if (s.Fixed.Count > 0)
         {
-            cards.Add(Section("Turned off", "New sessions start without these. Sessions that are open keep their copy until you close them."));
+            var shared = s.Fixed.Count(f => f.Shared is not null);
+            cards.Add(Section(shared == 0 ? "Turned off" : shared == s.Fixed.Count ? "Shared" : "Turned off or shared",
+                "New sessions start without these, or use the one shared copy. Sessions that are open keep their own until you close them."));
             cards.Add(Done(s.Fixed));
         }
         Stack.SuspendLayout();
@@ -376,16 +378,23 @@ sealed class FixesPage : Page
         if (save is not null) card.Controls.Add(save);
         var action = ActionFor(a, primary);
         if (action is not null) card.Controls.Add(action);
+        var off = a.Share ? new FlatButton("Turn off", glyph: "\uE7E8") { BackColor = t.Surface } : null; // sharing keeps the tool, so it leads
+        if (off is not null)
+        {
+            off.Click += async (_, _) => { if (!_busy) await Run(() => Fixer.TurnOff(a.Title, a.Servers!)); };
+            card.Controls.Add(off);
+        }
 
         void Place()
         {
-            var right = Math.Max(action?.Width ?? 0, save?.Width ?? 0) + 24;
+            var right = Math.Max((action?.Width ?? 0) + (off is null ? 0 : off.Width + 8), save?.Width ?? 0) + 24;
             title.Width = card.Width - x - right - Pad;
             detail.Width = Math.Min(660, card.Width - x - right - Pad);
             if (save is not null) save.Location = new Point(card.Width - save.Width - Pad, Pad);
             var h = Math.Max(action is null ? Pad + 40 + Pad : 124, detail.Bottom + Pad);
             if (card.Height != h) card.Height = h;
             if (action is not null) action.Location = new Point(card.Width - action.Width - Pad, card.Height - action.Height - Pad);
+            if (off is not null && action is not null) off.Location = new Point(action.Left - off.Width - 8, action.Top);
         }
         card.Resize += (_, _) => Place();
         Place();
@@ -398,6 +407,7 @@ sealed class FixesPage : Page
         {
             AdviceKind.Orphans or AdviceKind.IdleSessions => new FlatButton("Close them", primary),
             AdviceKind.BigApp when _s.Report is { } r => new FlatButton($"Cap at {Advisor.SuggestedCapMB(r.Snapshot.TotalRamBytes) / 1024} GB", primary),
+            AdviceKind.Duplicates when a.Share => new FlatButton("Share one copy", true, glyph: "\uE8EB"),
             AdviceKind.Duplicates when a.CanFix => new FlatButton("Turn off", primary, glyph: "\uE7E8"),
             _ when a.ConfigPath is not null => new FlatButton("Open config"),
             _ => null,
@@ -410,6 +420,7 @@ sealed class FixesPage : Page
             if (a.Kind == AdviceKind.Orphans) _s.RunNow(true);
             else if (a.Kind == AdviceKind.IdleSessions) { await Run(CloseIdle); _s.RunNow(false); }
             else if (a.Kind == AdviceKind.BigApp) { SetCap(a); await Recompute(); }
+            else if (a.Share) await Run(() => Fixer.Share(a.Title, a.Servers!, _s.Profiles.Shareable));
             else if (a.CanFix) await Run(() => Fixer.TurnOff(a.Title, a.Servers!));
             else MainForm.Open(a.ConfigPath!);
         };
@@ -425,8 +436,9 @@ sealed class FixesPage : Page
             var names = string.Join(", ", f.Entries.Select(e => e.Server.Name).Distinct());
             var where = string.Join(", ", f.Entries.Select(e => Advisor.Display(e.Server.Path)).Distinct());
             var projects = f.Entries.Count(e => e.Server.Project is not null);
-            card.Controls.Add(Button($"{names} is off", $"{where}{(projects > 0 ? $" · and {projects} project{(projects > 1 ? "s" : "")}" : "")} · {f.At:d MMM HH:mm}",
-                "Turn on again", async () => await Run(() => Fixer.Undo(f.Id))));
+            card.Controls.Add(Button(f.Shared is null ? $"{names} is off" : $"{names} runs once for all sessions",
+                $"{where}{(projects > 0 ? $" · and {projects} project{(projects > 1 ? "s" : "")}" : "")} · {f.At:d MMM HH:mm}",
+                f.Shared is null ? "Turn on again" : "Stop sharing", async () => await Run(() => Fixer.Undo(f.Id))));
         }
         Fit(card);
         return card;
@@ -454,16 +466,17 @@ sealed class FixesPage : Page
         {
             AdviceKind.Orphans or AdviceKind.IdleSessions => $"Close {a.Title}",
             AdviceKind.BigApp => $"{a.Title}: cap it at {cap} GB",
+            AdviceKind.Duplicates when a.Share => $"Run {string.Join(", ", a.Servers!.Select(s => s.Name).Distinct())} once for all Claude Code sessions",
             _ => $"Turn off {string.Join(", ", a.Servers!.Select(s => s.Name).Distinct())} in {string.Join(", ", a.Servers!.Select(s => Advisor.Display(s.Path)).Distinct())}",
         }));
-        if (MessageBox.Show(FindForm(), "AI RAM Guard will:\n\n" + string.Join("\n", steps) + "\n\nTurned-off servers can be turned on again on this page.",
+        if (MessageBox.Show(FindForm(), "AI RAM Guard will:\n\n" + string.Join("\n", steps) + "\n\nYou can undo each of them on this page.",
             "Fix all", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
 
         foreach (var a in fixable.Where(a => a.Kind == AdviceKind.BigApp)) SetCap(a);
         var servers = fixable.Where(a => a.Kind == AdviceKind.Duplicates).ToList();
         await Run(() =>
         {
-            var failed = servers.Select(a => Fixer.TurnOff(a.Title, a.Servers!)).Where(r => !r.Ok).Select(r => r.Message).ToList();
+            var failed = servers.Select(a => a.Share ? Fixer.Share(a.Title, a.Servers!, _s.Profiles.Shareable) : Fixer.TurnOff(a.Title, a.Servers!)).Where(r => !r.Ok).Select(r => r.Message).ToList();
             if (fixable.Any(a => a.Kind == AdviceKind.IdleSessions)) CloseIdle();
             return failed.Count == 0 ? new FixResult(true, "") : new FixResult(false, string.Join("\n\n", failed));
         });
@@ -503,7 +516,7 @@ sealed class FixesPage : Page
             {
                 var configs = KnownConfigs.Read();
                 var f = Fixer.Applied(configs);
-                return (report is null ? _s.Advice : Advisor.Advise(report, configs, f, caps, Sessions.FindIdle(report.Snapshot, _s.Settings.Guard)), f);
+                return (report is null ? _s.Advice : Advisor.Advise(report, configs, f, caps, Sessions.FindIdle(report.Snapshot, _s.Settings.Guard), _s.Profiles.Shareable), f);
             });
         }
         catch (Exception e) { Log.Write($"fixes refresh failed: {e.Message}"); return; } // async void caller: the next round shows the new state

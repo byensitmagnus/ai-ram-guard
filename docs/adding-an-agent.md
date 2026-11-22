@@ -21,6 +21,22 @@ AI RAM Guard knows AI apps from data, not code. Every app is an entry in [`profi
 
 Top-level `helperPatterns` apply to all apps (generic MCP patterns).
 
+## A server that can be shared
+
+Top-level `shareable` lists MCP servers that can run once, over HTTP, for all Claude Code sessions (see [shared servers](how-it-works.md#shared-servers)). Only add a server that keeps no state between requests and requires a bearer token on `127.0.0.1`: otherwise sessions sharing it would see each other.
+
+```json
+{ "match": "email-mcp", "stdioArg": "stdio", "httpArgs": ["http", "--port", "{port}"], "tokenEnv": "EMAIL_MCP_HTTP_TOKEN", "path": "/mcp" }
+```
+
+| Field | Meaning |
+|---|---|
+| `match` | A name in the server's config entry, its package or launcher. `email-mcp` matches `@codefuturist/email-mcp` and `email-mcp-launch.py`, not `my-email-mcp`. |
+| `stdioArg` | The argument that picks stdio. It is replaced by `httpArgs`, or they go at the end. |
+| `httpArgs` | The arguments for HTTP. `{port}` is filled in. |
+| `tokenEnv` | The environment variable the server reads its token from. |
+| `path` | The HTTP path, `/mcp` by default. |
+
 ## Try it locally, no build needed
 
 Open AI RAM Guard → **Settings → Advanced → Add your own AI app → Edit profiles**. That opens `%APPDATA%\AiRamGuard\profiles.json`. Your entries are merged with the built-in ones, and yours win on the same `id`. A file with a typo is ignored (and logged), never fatal. Restart AI RAM Guard, then check:

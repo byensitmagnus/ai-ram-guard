@@ -5,7 +5,10 @@
 | `airg scan` | RAM and internet connections per AI app, its helpers/MCP servers (duplicates flagged) and orphans |
 | `airg scan --json` | Same data as JSON (MB values) for scripts and dashboards |
 | `airg advise` | Permanent fixes: duplicated MCP servers, npx wrappers, the config file that loads them, and what each saves |
-| `airg advise --json` | Same as JSON: `kind`, `title`, `detail`, `savingsMB`, `configPath`, `canFix` (the app's *Fixes* page can do it in one click) |
+| `airg advise --json` | Same as JSON: `kind`, `title`, `detail`, `savingsMB`, `configPath`, `canFix`, `canShare` (the app's *Fixes* page can do it in one click) |
+| `airg share` | Run each duplicated server that can be shared once, over HTTP, for all Claude Code sessions (see [how it works](how-it-works.md#shared-servers)) |
+| `airg share <name>` | Only that config entry, e.g. `airg share byens-mail` |
+| `airg unshare <name>` / `--all` | Back to one copy per session, the entries as they were |
 | `airg clean` | Close orphans and trim AI apps now, regardless of the limit |
 | `airg clean --dry-run` | Only show what `clean` would do |
 | `airg clean --close-idle 3` | Also close Claude sessions (desktop and `claude --bg`) nobody wrote in for 3 hours, with their MCP servers. The conversation is kept: Claude starts a desktop session again when you write in it, a background one with `claude attach` |

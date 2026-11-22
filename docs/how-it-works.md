@@ -30,6 +30,14 @@ For every process, the analyzer walks up the parent chain until it reaches a pro
 
 A **helper** is a process whose command line matches a helper pattern: MCP servers, `npx` wrappers, `uvx`, REPL bridges. AI app processes themselves are never helpers. Helpers are grouped by a short key: the npm package (`@scope/name`), the package folder under `node_modules`, the script name or the executable. Three or more copies under one AI app are flagged as duplicates.
 
+## Shared servers
+
+Every Claude Code session starts its own copy of each stdio MCP server. A server that keeps no state between requests can serve them all over HTTP instead: each request stands alone, so sessions don't see each other's data. `profiles.json` lists those under `shareable`, with the argument that picks HTTP, the port, and the variable the server reads its token from.
+
+**Share one copy** (or `airg share`) starts the server's own command with those arguments, a free port on `127.0.0.1` and a new 64-character token. Before it changes anything it checks that the copy answers an initialize and two tool lists, turns away a request without the token, and listens on this PC only. Then it replaces the entries in `~/.claude.json` with `{"type": "http", "url": …, "headers": {"Authorization": "Bearer …"}}`, after a backup, and only if they are unchanged. A read-only and a full server with different arguments each get their own copy. New sessions use it; open sessions keep their own copy until they close.
+
+The copies are AI RAM Guard's children and outlive it. Each round the app (or `airg watch`) starts any that doesn't answer, at most every 2 minutes. **Stop sharing** puts each entry back as it was, unless someone changed it since, and closes the copy: only processes with its exact command line and their children. Uninstalling does the same for all of them.
+
 ## Orphans: the rule
 
 A helper is an orphan when **both** are true:
@@ -92,5 +100,5 @@ If you put `TEMP` on a Dev Drive, Microsoft notes that Windows Update needs the 
 
 - Close an AI app, a session Claude marks as busy, or one you wrote in within the hours you chose
 - Close anything that isn't a helper it saw an AI app start
-- Need admin rights, talk to the network or send telemetry
+- Need admin rights, talk to the internet or send telemetry (a shared server's check talks to `127.0.0.1` only)
 - Move Claude Code's or Codex's folders, or anything outside a cache folder

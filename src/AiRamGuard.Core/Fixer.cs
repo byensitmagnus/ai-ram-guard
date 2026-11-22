@@ -13,8 +13,9 @@ public sealed record ServerEntry(string App, string Path, string Section, string
 /// <param name="Saved">JSON: the server's definition to put back. TOML: the "enabled" line it had, or null when it had none.</param>
 public sealed record FixEntry(ServerEntry Server, string Definition, string? Saved);
 
-/// <summary>One "turn off", with what is needed to turn it back on.</summary>
-public sealed record FixRecord(string Id, string Title, List<FixEntry> Entries, DateTime At);
+/// <summary>One "turn off" or "share", with what is needed to undo it.</summary>
+/// <param name="Shared">Set for a share: the one copy AI RAM Guard runs, which the entries now point at.</param>
+public sealed record FixRecord(string Id, string Title, List<FixEntry> Entries, DateTime At, SharedServer? Shared = null);
 
 public sealed record FixResult(bool Ok, string Message);
 
@@ -231,7 +232,7 @@ static class Toml
 }
 
 /// <summary>Switches MCP servers off in the apps' own config files, with a backup and a record to switch them back on.</summary>
-public static class Fixer
+public static partial class Fixer
 {
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     const int KeepBackups = 20;
@@ -240,7 +241,7 @@ public static class Fixer
 
     /// <summary>Fixes that still hold: at least one of their servers is still off. Read from the configs already in memory.</summary>
     public static IReadOnlyList<FixRecord> Applied(IReadOnlyList<ConfigFile> configs, string? file = null) =>
-        History(file).Where(r => r.Entries.Any(e => IsOff(e.Server, configs))).ToList();
+        History(file).Where(r => r.Shared is { } s ? r.Entries.Any(e => IsShared(e.Server, s, configs)) : r.Entries.Any(e => IsOff(e.Server, configs))).ToList();
 
     static bool IsOff(ServerEntry s, IReadOnlyList<ConfigFile> configs) =>
         configs.FirstOrDefault(c => c.Path == s.Path) is { } c && !McpServers.List(c).Any(x => x.Entry == s);
@@ -347,6 +348,14 @@ public static class Fixer
                         continue;
                     }
                     if (JsonText.Container(root, e.Server, create: true) is not { } box) { noProject.Add(e.Server.Project!); continue; }
+                    if (record.Shared is { } shared)
+                    {
+                        // Only while it still points at our copy: an entry you changed since is yours.
+                        if (e.Saved is null || !Shares.PointsAt(box[e.Server.Name], shared)) continue;
+                        box[e.Server.Name] = JsonNode.Parse(e.Saved);
+                        done.Add(e);
+                        continue;
+                    }
                     if (box.ContainsKey(e.Server.Name) || e.Saved is null) continue; // on again already, by you or the app
                     box[e.Server.Name] = JsonNode.Parse(e.Saved);
                     done.Add(e);
@@ -356,14 +365,21 @@ public static class Fixer
             if (error is not null) problems.Add($"{Advisor.Display(path)}: {error}");
         }
 
-        var stillOff = record.Entries.Where(e => File.Exists(e.Server.Path) && IsOffOnDisk(e.Server)).ToList();
+        var stillOff = record.Entries.Where(e => File.Exists(e.Server.Path) && (record.Shared is { } sh ? IsSharedOnDisk(e.Server, sh) : IsOffOnDisk(e.Server))).ToList();
         problems.AddRange(noProject.Select(p => $"project {p} is no longer in the config"));
         if (stillOff.Count > 0 || problems.Count > 0)
-            return new(false, "Couldn't turn all of it back on:\n" + string.Join("\n", problems.Distinct()) + (stillOff.Count > 0 ? $"\nStill off: {string.Join(", ", stillOff.Select(e => e.Server.Name).Distinct())}" : ""));
+            return new(false, "Couldn't put all of it back:\n" + string.Join("\n", problems.Distinct()) + (stillOff.Count > 0 ? $"\nStill {(record.Shared is null ? "off" : "shared")}: {string.Join(", ", stillOff.Select(e => e.Server.Name).Distinct())}" : ""));
         records.Remove(record);
         TrySave(records, file);
+        var names = string.Join(", ", record.Entries.Select(e => e.Server.Name).Distinct());
+        if (record.Shared is { } stop)
+        {
+            Shares.Stop(stop);
+            foreach (var e in record.Entries) Log.Write($"stopped sharing {e.Server.Name} in {Where(e.Server)}");
+            return new(true, $"{names} runs per session again. Sessions open now lose it: close and reopen them, or write /mcp in them to reconnect.");
+        }
         foreach (var e in record.Entries) Log.Write($"turned on {e.Server.Name} again in {Where(e.Server)}");
-        return new(true, $"Turned {string.Join(", ", record.Entries.Select(e => e.Server.Name).Distinct())} back on. New sessions start it again.");
+        return new(true, $"Turned {names} back on. New sessions start it again.");
     }
 
     const string Lossy = "writing it back would change more than the servers, so it was left alone";

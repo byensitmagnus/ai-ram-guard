@@ -13,6 +13,9 @@ Usage:
                               Guard continuously (what the tray app does)
   --close-idle HOURS          With clean or watch: also close Claude sessions (desktop and 'claude --bg')
                               nobody wrote in for that long. The conversation is kept.
+  airg share [name]           Run a duplicated MCP server once for all Claude Code sessions, over HTTP
+                              (only servers that keep no state between requests, see profiles.json)
+  airg unshare <name>|--all   Back to one copy per session, config as it was
   airg disk [--json]          Where AI tools and their caches write, and how much
   airg move <id> <drive|folder>
                               Move a cache to another drive, e.g. airg move npm D:
@@ -48,9 +51,9 @@ switch (cmd)
     case "advise":
         var configs = KnownConfigs.Read();
         var scanned = Guard.Scan(profiles);
-        var advice = Advisor.Advise(scanned, configs, Fixer.Applied(configs), idle: Sessions.FindIdle(scanned.Snapshot, settings));
+        var advice = Advisor.Advise(scanned, configs, Fixer.Applied(configs), idle: Sessions.FindIdle(scanned.Snapshot, settings), shareable: profiles.Shareable);
         if (Has("--json"))
-            Console.WriteLine(JsonSerializer.Serialize(advice.Select(a => new { kind = a.Kind.ToString(), a.Title, a.Detail, savingsMB = a.SavingsBytes / 1048576, a.ConfigPath, canFix = a.CanFix }), new JsonSerializerOptions { WriteIndented = true }));
+            Console.WriteLine(JsonSerializer.Serialize(advice.Select(a => new { kind = a.Kind.ToString(), a.Title, a.Detail, savingsMB = a.SavingsBytes / 1048576, a.ConfigPath, canFix = a.CanFix, canShare = a.Share }), new JsonSerializerOptions { WriteIndented = true }));
         else if (advice.Count == 0) Console.WriteLine("Nothing to fix. No duplicated MCP servers and no leftovers.");
         else
             foreach (var a in advice)
@@ -60,6 +63,44 @@ switch (cmd)
                 Console.WriteLine();
             }
         return 0;
+
+    case "share":
+    {
+        var cfg = KnownConfigs.Read();
+        var scan = Guard.Scan(profiles);
+        var name = args.Skip(1).FirstOrDefault(a => !a.StartsWith('-'));
+        var todo = Advisor.Advise(scan, cfg, Fixer.Applied(cfg), shareable: profiles.Shareable)
+            .Where(a => a.Share && (name is null || a.Servers!.Any(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))).ToList();
+        if (todo.Count == 0)
+        {
+            Console.WriteLine(name is null ? "Nothing to share: no duplicated server that can run as one copy." : $"{name} isn't running several times as a server that can be shared.");
+            return 1;
+        }
+        var ok = true;
+        foreach (var a in todo)
+        {
+            var sr = Fixer.Share(a.Title, name is null ? a.Servers! : a.Servers!.Where(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).ToList(), profiles.Shareable);
+            Console.WriteLine(sr.Message);
+            ok &= sr.Ok;
+        }
+        return ok ? 0 : 1;
+    }
+
+    case "unshare":
+    {
+        var name = args.Skip(1).FirstOrDefault(a => !a.StartsWith('-'));
+        if (name is null && !Has("--all")) { Console.WriteLine("Usage: airg unshare <name>|--all"); return 1; }
+        var shares = Fixer.History().Where(f => f.Shared is not null && (name is null || f.Entries.Any(e => e.Server.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))).ToList();
+        if (shares.Count == 0) { Console.WriteLine("Nothing is shared."); return Has("--all") ? 0 : 1; }
+        var ok = true;
+        foreach (var f in shares)
+        {
+            var ur = Fixer.Undo(f.Id);
+            Console.WriteLine(ur.Message);
+            ok &= ur.Ok;
+        }
+        return ok ? 0 : 1;
+    }
 
     case "clean":
         var r = Guard.Run(settings, profiles, force: true, dryRun: Has("--dry-run"));
@@ -71,6 +112,7 @@ switch (cmd)
         while (true)
         {
             var w = Guard.Run(settings, profiles);
+            Shares.KeepRunning(Fixer.Applied(KnownConfigs.Read()));
             if (w.Killed + w.Trimmed > 0) Console.WriteLine($"{DateTime.Now:HH:mm} {w.Reason}: closed {w.Killed}, trimmed {w.Trimmed}, freed {w.FreedBytes / 1048576:N0} MB, free {Guard.Gb(w.FreeAfterBytes)} GB");
             Thread.Sleep(TimeSpan.FromSeconds(settings.IntervalSeconds));
         }

@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 — 2026-11-22
 
+- New fix: **Share one copy.** A stateless MCP server that every Claude Code session starts on its own now runs once, over HTTP, for all of them. You keep the tool, and the sessions stay apart: every request stands alone. AI RAM Guard starts the copy on `127.0.0.1` with a new token, checks that it answers several requests, refuses requests without the token and listens on this PC only, and only then points the entries in `~/.claude.json` at it (with a backup). **Stop sharing** puts them back as they were. The app starts a copy again after a reboot or a crash. On the PC this was built on, 52 copies of the mail server (2.8 GB) became two (about 220 MB).
+- The first shareable server is `email-mcp` (`@codefuturist/email-mcp`, also through a launcher script). Servers that keep one shared state, or have no HTTP mode with a token, aren't offered. Add your own under `shareable` in `profiles.json`, see [adding an agent](docs/adding-an-agent.md).
+- `airg share [name]` and `airg unshare <name>|--all`. `airg watch` keeps shared copies running too, and uninstalling puts the configs back first.
 - New fix: **Turn off** for a server that comes from a Claude Desktop plugin (for example `desktop-commander`), which has no config entry. It sets `"enabled": false` for the plugin in Claude Desktop's `plugin-list\…\plugins.json`, with a backup and **Turn on again**. The plugin's skills go too, and it takes effect when Claude Desktop restarts.
 - A server started by a launcher script (`email-mcp-launch.py` starting `@codefuturist/email-mcp`) is now one fix, not two. The server's own card said "turn it off in the app" although switching off the launcher's config entry removes both. Its memory counts in the launcher's fix.
 - The internet-connection warning names the helpers that hold most of the connections ("most in @codefuturist/email-mcp (96)"), so you know which server to turn off.

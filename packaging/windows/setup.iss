@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.6.1"
+  #define AppVersion "1.7.0"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\..\out\sc"
@@ -48,6 +48,10 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\AiRamGu
 
 [Run]
 Filename: "{app}\AiRamGuard.exe"; Description: "Open AI RAM Guard"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+; Shared MCP servers: configs back to one copy per session, before the app that keeps them running is gone.
+Filename: "{app}\airg.exe"; Parameters: "unshare --all"; Flags: runhidden waituntilterminated; RunOnceId: "Unshare"
 
 [Code]
 const AppPathEntry = '\Programs\AiRamGuard';

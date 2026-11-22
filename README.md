@@ -66,7 +66,7 @@ More: [Why AI tools use so much RAM](docs/why-ai-tools-use-so-much-ram.md).
 - **Shows the real number.** RAM and what is held with the pagefile, per AI app and per MCP server.
 - **Warns before the limit.** When Windows has handed out 85 % of all it can, you see it on the Overview, on the icon and in a notification.
 - **Closes idle Claude sessions.** One click closes sessions nobody wrote in for hours, with their MCP servers. The conversation is kept: Claude starts the session again when you write in it.
-- **Finds the cause.** "`rea-agents` runs 20× under Claude, switched on in `~/.claude.json`". **Turn off** fixes the config, and you can undo it.
+- **Finds the cause.** "`rea-agents` runs 20× under Claude, switched on in `~/.claude.json`". **Turn off** fixes the config, and you can undo it. A server that keeps no state gets **Share one copy** instead: one HTTP copy for every Claude Code session (52 mail servers, 2.8 GB, became two).
 - **Closes leftovers.** MCP servers and `npx` wrappers whose AI app is gone.
 - **Frees RAM without closing anything.** When free RAM drops below your limit, idle AI memory is moved out. The app you are using is never touched.
 - **Gives your game room.** A stricter limit while a fullscreen game is in front, lower priority for AI apps in the background, and a cap per app.
